@@ -1,6 +1,8 @@
 # Sway
 
-A desktop productivity app — **offline-first**, with multi-device cloud sync and Google Calendar import. Built with **PySide6 + SQLite + Supabase**.
+Sway is a productivity app with a desktop app and a web app. The desktop app is
+**offline-first**; the web app is **online-first** with a marketing landing page, Supabase auth,
+FastAPI, and a Next.js dashboard. Both share task domain logic through a Python core package.
 
 Local SQLite is the source of fast, always-available app behavior; Supabase is the cloud
 sync/backup layer; Google Calendar is a read-only integration — never the source of truth.
@@ -23,7 +25,10 @@ sync/backup layer; Google Calendar is a read-only integration — never the sour
 
 | Layer | Choice |
 |---|---|
-| UI | PySide6 (Qt for Python) |
+| Desktop UI | PySide6 (Qt for Python) |
+| Web UI | Next.js + TypeScript + Tailwind |
+| API | FastAPI |
+| Shared logic | `packages/core` (`sway-core`) |
 | Local store | SQLite (offline-first) |
 | Cloud backend | Supabase (Postgres + Auth + Row-Level Security) |
 | Calendar | Google Calendar API (read-only import) |
@@ -52,18 +57,26 @@ sync/backup layer; Google Calendar is a read-only integration — never the sour
 ## Project layout
 
 ```
-app/
-  ui/            windows, views, dialogs, components, theme
-  services/      task / reminder / sync / auth / google calendar / recurrence
-  repositories/  sqlite, supabase, settings
-  models/        Task dataclass
-  db/            database.py + schema.sql (local)
-  notifications/ tray icon + notifier
-  utils/         datetime, ids, logging, resources, autostart
-  assets/styles/ dark.qss, light.qss
-supabase/        schema.sql (cloud table + RLS — run once in Supabase)
-packaging/       build_macos.sh, icon.icns
-main.py          entry point
+apps/
+  desktop/                 PySide6 desktop app
+    app/
+      ui/                  windows, views, dialogs, components, theme
+      services/            task / reminder / sync / auth / google calendar / recurrence
+      repositories/        sqlite, supabase, settings
+      models/              Task dataclass
+      db/                  database.py + schema.sql (local)
+      notifications/       tray icon + notifier
+      utils/               datetime, ids, logging, resources, autostart
+      assets/styles/       dark.qss, light.qss
+    packaging/             build_macos.sh, icon.icns
+    main.py                desktop entry point
+    pyproject.toml         desktop Python dependencies
+  api/                     FastAPI backend for the web app
+  web/                     Next.js + TypeScript web app
+packages/
+  core/                    shared Python task/domain logic
+supabase/                  shared cloud schema + RLS
+README.md                  shared product documentation
 ```
 
 ## Getting started
@@ -71,16 +84,39 @@ main.py          entry point
 **Prerequisites:** Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
+cd apps/desktop
 uv sync          # install dependencies
 uv run python main.py
 ```
 
 That's it for **local, offline-only** use — no account or cloud needed.
 
+### Web app + API
+
+Run the FastAPI backend:
+
+```bash
+cd apps/api
+uv sync
+uv run uvicorn api.main:app --reload
+```
+
+Run the Next.js frontend:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The first screen is the public landing page;
+the CTA goes to `/auth`, and successful auth redirects to `/dashboard`.
+
 ### Optional: cloud sync (Supabase)
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. **SQL Editor** → run [`supabase/schema.sql`](supabase/schema.sql) (creates the `tasks` table + RLS).
+2. **SQL Editor** → run [`supabase/schema.sql`](supabase/schema.sql) (creates the task, settings,
+   and Google integration tables + RLS).
 3. **Authentication → Sign In / Providers → Email** → turn **off** "Confirm email".
 4. **Database → triggers** (or SQL Editor) → add a server-timestamp trigger so sync ordering uses
    the server clock:
@@ -90,14 +126,18 @@ That's it for **local, offline-only** use — no account or cloud needed.
    create trigger tasks_set_updated_at before insert or update on public.tasks
      for each row execute function public.set_updated_at();
    ```
-5. **Project Settings → API Keys** → copy the **Project URL** and the **publishable** key into a
-   `.env` in the project root (see [`.env.example`](.env.example)):
+5. **Project Settings → API Keys** → copy the **Project URL** and the **publishable** key into
+   `apps/desktop/.env` or the shared root `.env`. You can use [`.env.example`](.env.example)
+   as the template:
    ```
    SUPABASE_URL=https://YOURPROJECT.supabase.co
    SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   SUPABASE_SERVICE_ROLE_KEY=...
+   NEXT_PUBLIC_SUPABASE_URL=https://YOURPROJECT.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
    (Credentials are also read from `~/Library/Application Support/Sway/supabase.json`, which is what
-   the packaged app uses since it can't see the project `.env`.)
+   the packaged app uses since it can't see local `.env` files.)
 
 Restart the app → you'll get a login screen to create an account, and tasks sync across devices.
 
@@ -108,10 +148,14 @@ Restart the app → you'll get a login screen to create an account, and tasks sy
    and create an **OAuth client ID of type "Desktop app"**.
 2. In Sway: **Settings → Set up Google Calendar** → paste the Client ID + secret → authorize in the
    browser. Events from your visible calendars import as read-only tasks.
+3. For the web app: create an OAuth client ID of type **Web application** and set
+   `http://localhost:8000/integrations/google/callback` as an authorized redirect URI. Put the
+   client ID/secret in `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_WEB_CLIENT_SECRET`.
 
 ## Building the macOS app
 
 ```bash
+cd apps/desktop
 bash packaging/build_macos.sh   # → dist/Sway.app
 ```
 

@@ -1,0 +1,19 @@
+[project]
+name = "sway-api"
+version = "0.1.0"
+description = "FastAPI backend for Sway web."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.124.0",
+    "google-api-python-client>=2.197.0",
+    "google-auth>=2.53.0",
+    "google-auth-oauthlib>=1.4.0",
+    "pydantic>=2.13.0",
+    "python-dateutil>=2.9.0.post0",
+    "sway-core",
+    "supabase>=2.30.1",
+    "uvicorn[standard]>=0.38.0",
+]
+
+[tool.uv.sources]
+sway-core = { path = "../../packages/core", editable = true }

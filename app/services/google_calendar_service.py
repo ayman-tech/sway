@@ -275,6 +275,8 @@ class GoogleCalendarService:
             source=Source.GOOGLE,
             google_event_id=event_id,
             status=TaskStatus.PENDING,
+            # Preserve the user's locally-added reminder across calendar changes.
+            reminder_minutes_before=existing.reminder_minutes_before if existing else None,
             created_at=existing.created_at if existing else utc_now(),
         )
         task_repo.upsert(task)

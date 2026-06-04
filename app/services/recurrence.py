@@ -15,7 +15,7 @@ from app.models.task import Task
 
 # UI "Repeat" choices → (FREQ, INTERVAL)
 REPEAT_OPTIONS: list[tuple[str, tuple[str, int] | None]] = [
-    ("Does not repeat", None),
+    ("Don’t repeat", None),
     ("Daily", ("DAILY", 1)),
     ("Weekly", ("WEEKLY", 1)),
     ("Every 2 weeks", ("WEEKLY", 2)),

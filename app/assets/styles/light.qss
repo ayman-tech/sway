@@ -3,7 +3,7 @@
 QWidget {
     background-color: #f4f5f7;
     color: #1d2129;
-    font-family: -apple-system, "Segoe UI", "Inter", sans-serif;
+    font-family: ".AppleSystemUIFont", "Helvetica Neue", "Arial";
     font-size: 14px;
 }
 
@@ -188,8 +188,8 @@ QCalendarWidget QSpinBox {
 QCalendarWidget QAbstractItemView:enabled {
     background-color: #f4f5f7;
     color: #1d2129;
-    selection-background-color: #2b6cff;
-    selection-color: #ffffff;
+    selection-background-color: transparent;
+    selection-color: #1d2129;
     outline: none;
 }
 QCalendarWidget QAbstractItemView:disabled {
@@ -231,6 +231,19 @@ QLineEdit, QPlainTextEdit, QComboBox, QDateEdit, QDateTimeEdit {
 QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
 QDateEdit:focus, QDateTimeEdit:focus {
     border: 1px solid #2b6cff;
+}
+QComboBox:disabled, QLineEdit:disabled, QPlainTextEdit:disabled {
+    color: #b9bec6;
+    background-color: #f0f1f4;
+}
+/* Flat drop-down — no beveled/shadowed arrow box. */
+QComboBox::drop-down {
+    border: none;
+    background: transparent;
+    width: 22px;
+}
+QComboBox::down-arrow:disabled {
+    image: none;
 }
 
 QPushButton {

@@ -86,15 +86,18 @@ class ReminderService(QObject):
         for task in self._tasks.get_active_tasks():
             if not (task.due_at and task.has_time):
                 continue
-            # Google events already notify via Google; don't double up.
-            if task.is_read_only:
+            is_google = task.is_read_only
+            # Google events: only the user's optional lead reminder fires (the event /
+            # Google handles "now"). Skip entirely if no reminder was added.
+            if is_google and task.reminder_minutes_before is None:
                 continue
             if task.is_recurring:
                 occurrences = occurrences_between(task, start, end)
             else:
                 occurrences = [task.due_at] if start <= task.due_at <= end else []
             for occ in occurrences:
-                events.append(_ReminderEvent(occ, occ, task, "due"))
+                if not is_google:
+                    events.append(_ReminderEvent(occ, occ, task, "due"))
                 if task.reminder_minutes_before is not None:
                     fire = occ - timedelta(minutes=task.reminder_minutes_before)
                     events.append(_ReminderEvent(fire, occ, task, "extra"))

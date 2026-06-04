@@ -20,10 +20,12 @@ from PySide6.QtWidgets import (
 
 from app.cloud.config import load_google_config, save_google_config
 from app.constants import APP_NAME
+from app.repositories.settings_repo import SettingsRepository
 from app.services.auth_service import AuthService
 from app.services.google_calendar_service import GoogleCalendarService
 from app.services.sync_controller import SyncController
 from app.services.task_service import COMPLETED_RETENTION_DAYS, TaskService
+from app.ui.availability_view import AvailabilityView
 from app.ui.calendar_view import CalendarView
 from app.ui.google_setup_dialog import GoogleSetupDialog
 from app.ui.settings_view import SettingsView
@@ -35,6 +37,7 @@ _NAV_ITEMS = [
     ("tasks", "  ✓   Tasks", "Tasks"),
     ("calendar", "  ▦   Calendar", "Calendar"),
     ("completed", "  ◎   Completed", "Completed"),
+    ("availability", "  ◈   Availability", "Availability"),
     ("settings", "  ⚙   Settings", "Settings"),
 ]
 _TITLES = {key: title for key, _, title in _NAV_ITEMS}
@@ -51,12 +54,17 @@ class MainWindow(QWidget):
         auth_service: AuthService | None = None,
         sync_controller: SyncController | None = None,
         google_service: GoogleCalendarService | None = None,
+        settings_repo: SettingsRepository | None = None,
     ) -> None:
         super().__init__()
         self._service = service
         self._auth = auth_service
         self._sync = sync_controller
         self._google = google_service
+        if settings_repo is None:
+            from app.db.database import Database
+            settings_repo = SettingsRepository(Database())
+        self._settings_repo = settings_repo
         self._minimize_to_tray = False
         self.setWindowTitle(APP_NAME)
         self.resize(960, 640)
@@ -230,6 +238,10 @@ class MainWindow(QWidget):
         self._completed_view.taskDeleteRequested.connect(self._on_delete_task)
         self._register_view("completed", self._completed_view)
 
+        # Availability (personal when2meet-style grid)
+        self._availability_view = AvailabilityView(self._settings_repo, self._service)
+        self._register_view("availability", self._availability_view)
+
         # Settings
         account_email = self._auth.user.email if self._auth and self._auth.user else None
         self._settings_view = SettingsView(
@@ -298,16 +310,20 @@ class MainWindow(QWidget):
         if dialog.exec():
             v = dialog.values()
             try:
-                self._service.update_task(
-                    task_id,
-                    title=v["title"],
-                    description=v["description"],
-                    due_at=v["due_at"],
-                    has_time=v["has_time"],
-                    end_at=v["end_at"],
-                    reminder_minutes_before=v["reminder_minutes_before"],
-                    recurrence_rule=v["recurrence_rule"],
-                )
+                if task.is_read_only:
+                    # Google event: only the additional reminder is editable.
+                    self._service.set_reminder(task_id, v["reminder_minutes_before"])
+                else:
+                    self._service.update_task(
+                        task_id,
+                        title=v["title"],
+                        description=v["description"],
+                        due_at=v["due_at"],
+                        has_time=v["has_time"],
+                        end_at=v["end_at"],
+                        reminder_minutes_before=v["reminder_minutes_before"],
+                        recurrence_rule=v["recurrence_rule"],
+                    )
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save", str(exc))
                 return

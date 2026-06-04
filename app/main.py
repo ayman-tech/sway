@@ -87,7 +87,9 @@ class SwayApp:
         self._show_main()
 
     def _show_main(self) -> None:
-        self._window = MainWindow(self._task_service, self._auth, self._sync, self._google)
+        self._window = MainWindow(
+            self._task_service, self._auth, self._sync, self._google, self._settings
+        )
         if self._notifier.available:
             self._window.set_minimize_to_tray(True)
         self._window.tasksChanged.connect(self._reminders.reschedule)

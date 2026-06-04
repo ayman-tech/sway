@@ -9,8 +9,9 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
+    QGridLayout,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
@@ -73,60 +74,70 @@ class TaskEditorDialog(QDialog):
         if task:
             self._load(task)
         self._sync_enabled()
+        if task is not None and task.is_read_only:
+            self._apply_read_only_core()
 
     def _build(self) -> None:
+        # Label-less form: placeholders / default dropdown items act as the labels.
+        # Scheduling fields are laid out in a 2-column grid.
         layout = QVBoxLayout(self)
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        layout.setContentsMargins(18, 18, 18, 14)
+        layout.setSpacing(8)
+
+        self._note = QLabel("")
+        self._note.setObjectName("TaskSubtitle")
+        self._note.setWordWrap(True)
+        self._note.hide()
+        layout.addWidget(self._note)
 
         self.title_edit = QLineEdit()
-        self.title_edit.setPlaceholderText("What needs to be done?")
-        form.addRow("Title", self.title_edit)
+        self.title_edit.setPlaceholderText("Title")
+        layout.addWidget(self.title_edit)
 
         self.desc_edit = QPlainTextEdit()
-        self.desc_edit.setPlaceholderText("Notes (optional)")
-        self.desc_edit.setFixedHeight(80)
-        form.addRow("Description", self.desc_edit)
+        self.desc_edit.setPlaceholderText("Notes")
+        self.desc_edit.setFixedHeight(72)
+        layout.addWidget(self.desc_edit)
 
-        self.date_field = OptionalDateField()
+        self.date_field = OptionalDateField(placeholder="Date")
         self.date_field.changed.connect(self._sync_enabled)
-        form.addRow("Date", self.date_field)
-
-        self.time_field = OptionalTimeField()
+        self.time_field = OptionalTimeField(placeholder="Time")
         self.time_field.changed.connect(self._sync_enabled)
-        form.addRow("Time", self.time_field)
 
         # Optional duration → end_at = due_at + duration (timed tasks only).
         self.duration_combo = QComboBox()
-        self.duration_combo.addItem("None", None)
+        self.duration_combo.addItem("Duration", None)
         for label, minutes in _DURATION_OPTIONS:
             self.duration_combo.addItem(label, minutes)
         self.duration_combo.addItem("Custom…", "custom")
         self.duration_combo.activated.connect(self._on_duration_activated)
-        form.addRow("Duration", self.duration_combo)
 
-        # Timed tasks always remind at the task time; this is an optional *earlier* reminder.
+        # An optional earlier reminder, ahead of the task time.
         self.reminder_combo = QComboBox()
-        self.reminder_combo.addItem("None", None)
+        self.reminder_combo.addItem("No heads up", None)
         for label, minutes in _EXTRA_REMINDER_OPTIONS:
             self.reminder_combo.addItem(label, minutes)
-        self.reminder_combo.setToolTip(
-            "Timed tasks always remind you at the task time. "
-            "This adds an extra, earlier reminder."
-        )
-        form.addRow("Additional reminder", self.reminder_combo)
+        self.reminder_combo.setToolTip("An optional earlier reminder, ahead of the task time.")
 
         # Recurrence: a Repeat preset plus an optional end date (empty = never).
         self.repeat_combo = QComboBox()
         for label, rule in REPEAT_OPTIONS:
             self.repeat_combo.addItem(label, rule)
         self.repeat_combo.currentIndexChanged.connect(self._sync_enabled)
-        form.addRow("Repeat", self.repeat_combo)
+        self.until_field = OptionalDateField(placeholder="Repeat until")
 
-        self.until_field = OptionalDateField(placeholder="Never")
-        form.addRow("Repeat until", self.until_field)
-
-        layout.addLayout(form)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.addWidget(self.date_field, 0, 0)
+        grid.addWidget(self.time_field, 0, 1)
+        grid.addWidget(self.duration_combo, 1, 0)
+        grid.addWidget(self.reminder_combo, 1, 1)
+        grid.addWidget(self.repeat_combo, 2, 0)
+        grid.addWidget(self.until_field, 2, 1)
+        layout.addLayout(grid)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -134,6 +145,23 @@ class TaskEditorDialog(QDialog):
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _apply_read_only_core(self) -> None:
+        """Google events: only the additional reminder is editable; the rest is Google's."""
+        self.setWindowTitle("Google Calendar event")
+        self.title_edit.setReadOnly(True)
+        self.desc_edit.setReadOnly(True)
+        self.date_field.setEnabled(False)
+        self.time_field.setEnabled(False)
+        self.duration_combo.setEnabled(False)
+        self.repeat_combo.setEnabled(False)
+        self.until_field.setEnabled(False)
+        self.reminder_combo.setEnabled(True)
+        self._note.setText(
+            "From Google Calendar — only the additional reminder can be changed "
+            "(it won’t change the event in Google)."
+        )
+        self._note.show()
 
     def _sync_enabled(self) -> None:
         has_date = self.date_field.value() is not None

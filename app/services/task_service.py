@@ -105,6 +105,15 @@ class TaskService:
         )
         return self._repo.upsert(updated)
 
+    def set_reminder(self, task_id: str, reminder_minutes_before: int | None) -> Task:
+        """Update only the additional reminder (used for read-only Google events)."""
+        task = self._require(task_id)
+        if not (task.due_at and task.has_time):
+            reminder_minutes_before = None
+        return self._repo.upsert(
+            task.touched(reminder_minutes_before=reminder_minutes_before)
+        )
+
     def complete_task(self, task_id: str) -> Task:
         task = self._require(task_id)
         if task.is_recurring and task.due_at is not None:

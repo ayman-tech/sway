@@ -47,10 +47,16 @@ class TaskListView(QWidget):
     taskEditRequested = Signal(str)
     taskDeleteRequested = Signal(str)
 
-    def __init__(self, empty_text: str = "Nothing here yet.", show_headers: bool = True) -> None:
+    def __init__(
+        self,
+        empty_text: str = "Nothing here yet.",
+        show_headers: bool = True,
+        time_only: bool = False,
+    ) -> None:
         super().__init__()
         self._empty_text = empty_text
         self._show_headers = show_headers
+        self._time_only = time_only
         self._build()
 
     def _build(self) -> None:
@@ -102,7 +108,7 @@ class TaskListView(QWidget):
         return wrap
 
     def _make_card(self, task, overdue: bool) -> TaskCard:
-        card = TaskCard(task, overdue=overdue)
+        card = TaskCard(task, overdue=overdue, time_only=self._time_only)
         card.toggled.connect(self.taskToggled)
         card.editRequested.connect(self.taskEditRequested)
         card.deleteRequested.connect(self.taskDeleteRequested)

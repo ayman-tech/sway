@@ -14,5 +14,6 @@ packaging/icon_1024.png
 packaging/Sway.iconset/
 
 # user defined
-dev-docs/
+dev-plans/
 tests/*
+.DS_Store

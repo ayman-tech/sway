@@ -3,7 +3,7 @@
 QWidget {
     background-color: #1b1d22;
     color: #e6e8ec;
-    font-family: -apple-system, "Segoe UI", "Inter", sans-serif;
+    font-family: ".AppleSystemUIFont", "Helvetica Neue", "Arial";
     font-size: 14px;
 }
 
@@ -173,6 +173,14 @@ QCalendarWidget QToolButton {
 QCalendarWidget QToolButton:hover {
     background-color: #23262d;
 }
+QCalendarWidget QToolButton#qt_calendar_prevmonth,
+QCalendarWidget QToolButton#qt_calendar_nextmonth {
+    color: #b6bcc6;
+}
+QCalendarWidget QToolButton#qt_calendar_prevmonth:hover,
+QCalendarWidget QToolButton#qt_calendar_nextmonth:hover {
+    color: #e6e8ec;
+}
 QCalendarWidget QToolButton::menu-indicator {
     image: none;
 }
@@ -189,9 +197,15 @@ QCalendarWidget QSpinBox {
 QCalendarWidget QAbstractItemView:enabled {
     background-color: #1b1d22;
     color: #e6e8ec;
-    selection-background-color: #2b6cff;
-    selection-color: #ffffff;
+    selection-background-color: transparent;
+    selection-color: #e6e8ec;
     outline: none;
+}
+QCalendarWidget QHeaderView::section {
+    background-color: #1b1d22;
+    color: #8b909a;
+    border: none;
+    padding: 4px;
 }
 QCalendarWidget QAbstractItemView:disabled {
     color: #4b5160;
@@ -232,6 +246,19 @@ QLineEdit, QPlainTextEdit, QComboBox, QDateEdit, QDateTimeEdit {
 QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
 QDateEdit:focus, QDateTimeEdit:focus {
     border: 1px solid #2b6cff;
+}
+QComboBox:disabled, QLineEdit:disabled, QPlainTextEdit:disabled {
+    color: #5b616c;
+    background-color: #1f2228;
+}
+/* Flat drop-down — no beveled/shadowed arrow box. */
+QComboBox::drop-down {
+    border: none;
+    background: transparent;
+    width: 22px;
+}
+QComboBox::down-arrow:disabled {
+    image: none;
 }
 
 QPushButton {

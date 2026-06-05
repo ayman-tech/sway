@@ -6,13 +6,15 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Task } from "@/lib/types";
+import { LinkedText } from "@/components/linked-text";
 
 export default function CalendarPage() {
   const [month, setMonth] = useState(() => new Date());
   const [selected, setSelected] = useState(() => new Date());
+  const today = useMemo(() => new Date(), []);
   const range = useMemo(() => {
-    const start = startOfWeek(startOfMonth(month));
-    const end = endOfWeek(endOfMonth(month));
+    const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
+    const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
     return { start, end };
   }, [month]);
   const { data } = useQuery({
@@ -49,7 +51,7 @@ export default function CalendarPage() {
           </div>
         </div>
         <div className="panel grid grid-cols-7 overflow-hidden">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
             <div className="border-b border-[#dfd7ca] bg-white p-3 text-sm font-black text-[#667085]" key={day}>
               {day}
             </div>
@@ -57,16 +59,22 @@ export default function CalendarPage() {
           {days.map((day) => {
             const tasks = tasksFor(day);
             const active = isSameDay(day, selected);
+            const isToday = isSameDay(day, today);
             return (
               <button
-                className={`min-h-28 border-b border-r border-[#eee6da] p-2 text-left ${active ? "bg-[#e7f4f1]" : "bg-white"}`}
+                className={`min-h-28 border-b border-r border-[#eee6da] p-2 text-left ${
+                  active ? "calendar-day-selected" : "bg-white"
+                } ${isToday ? "calendar-day-today" : ""}`}
                 key={day.toISOString()}
                 onClick={() => setSelected(day)}
               >
                 <span className="font-black">{format(day, "d")}</span>
                 <div className="mt-2 space-y-1">
                   {tasks.slice(0, 3).map((task) => (
-                    <p className="truncate rounded bg-[#f2f4f7] px-2 py-1 text-xs font-bold" key={`${task.id}-${task.due_at}`}>
+                    <p
+                      className="truncate rounded bg-[#f2f4f7] px-2 py-1 text-xs font-bold"
+                      key={`${task.id}-${task.due_at}`}
+                    >
                       {task.title}
                     </p>
                   ))}
@@ -83,6 +91,11 @@ export default function CalendarPage() {
             selectedTasks.map((task) => (
               <div className="rounded-lg border border-[#e6ded2] bg-white p-3" key={`${task.id}-${task.due_at}`}>
                 <p className="font-black">{task.title}</p>
+                {task.description ? (
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#667085]">
+                    <LinkedText text={task.description} />
+                  </p>
+                ) : null}
                 <p className="mt-1 text-sm text-[#667085]">
                   {task.due_at && task.has_time ? new Date(task.due_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "All day"}
                 </p>

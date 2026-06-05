@@ -270,6 +270,27 @@ QPushButton {
 QPushButton:hover {
     background-color: #363a44;
 }
+#DetectedLinkButton {
+    background-color: #243654;
+    border: 1px solid #35527f;
+    color: #8fb4ff;
+    text-align: left;
+    padding: 5px 8px;
+}
+#DetectedLinkButton:hover {
+    background-color: #2a4167;
+    border: 1px solid #4d74b5;
+}
+#DetectedLinkCopyButton {
+    background-color: #1f2228;
+    border: 1px solid #35527f;
+    color: #a9afba;
+    padding: 5px 10px;
+}
+#DetectedLinkCopyButton:hover {
+    background-color: #243654;
+    border: 1px solid #4d74b5;
+}
 
 /* Nullable date/time field button — looks like an input, not a button */
 #FieldButton {

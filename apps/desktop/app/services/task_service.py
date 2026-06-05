@@ -210,13 +210,26 @@ class TaskService:
         ]
 
     def _active_display_tasks(self, horizon: datetime) -> list[Task]:
-        """Active tasks for the list view; recurring series expanded up to `horizon`."""
+        """Active tasks for the list view, capped to the next 30 days.
+
+        Recurring series keep their actionable current occurrence, then only future
+        preview occurrences through `horizon`. This avoids rendering a long backlog
+        when a recurring task's current due date is far in the past.
+        """
         tasks: list[Task] = []
         for task in self._repo.list_active():
             if task.is_recurring and task.due_at is not None:
-                tasks.extend(self._occurrences_as_tasks(task, task.due_at, horizon))
-            else:
+                if task.due_at > horizon:
+                    continue
                 tasks.append(task)
+                preview_start = max(utc_now(), task.due_at)
+                for occurrence in self._occurrences_as_tasks(task, preview_start, horizon):
+                    if occurrence.due_at != task.due_at:
+                        tasks.append(occurrence)
+            elif task.due_at is None or task.due_at <= horizon:
+                tasks.append(task)
+            else:
+                continue
         return tasks
 
     def get_tasks_in_range(self, start: datetime, end: datetime) -> list[Task]:

@@ -49,7 +49,7 @@ function AuthContent() {
   return (
     <main className="grid min-h-screen place-items-center px-6 py-10">
       <div className="w-full max-w-md">
-        <Link className="mb-6 inline-flex items-center gap-2 font-bold text-[#0f766e]" href="/">
+        <Link className="mb-6 inline-flex items-center gap-2 font-bold text-[var(--accent)]" href="/">
           <ArrowLeft size={18} /> Back to Sway
         </Link>
         <section className="panel p-6 shadow-lg">
@@ -57,14 +57,14 @@ function AuthContent() {
           <p className="mt-2 text-[#667085]">Use your Sway account to open the web dashboard.</p>
           <div className="mt-6 grid grid-cols-2 gap-2 rounded-lg bg-[#f1eadf] p-1">
             <button
-              className={`rounded-md px-3 py-2 font-bold ${mode === "signup" ? "bg-white text-[#0f766e]" : "text-[#667085]"}`}
+              className={`rounded-md px-3 py-2 font-bold ${mode === "signup" ? "bg-white text-[var(--accent)]" : "text-[#667085]"}`}
               onClick={() => setMode("signup")}
               type="button"
             >
               Create
             </button>
             <button
-              className={`rounded-md px-3 py-2 font-bold ${mode === "signin" ? "bg-white text-[#0f766e]" : "text-[#667085]"}`}
+              className={`rounded-md px-3 py-2 font-bold ${mode === "signin" ? "bg-white text-[var(--accent)]" : "text-[#667085]"}`}
               onClick={() => setMode("signin")}
               type="button"
             >

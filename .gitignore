@@ -8,7 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
-.env
+.env*
+!.env.example
 *.spec
 apps/desktop/packaging/icon_1024.png
 apps/desktop/packaging/Sway.iconset/

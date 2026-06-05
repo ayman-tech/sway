@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import html
+import re
 
-from PySide6.QtCore import QDate, QTime, Qt
+from PySide6.QtCore import QDate, QTime, Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -15,6 +19,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -46,6 +51,16 @@ _DURATION_OPTIONS = [
     ("3 hr", 180),
 ]
 
+_URL_RE = re.compile(r"""(?ix)
+    (?:
+        https?://
+        |
+        www\.
+    )
+    [^\s<>"']+
+""")
+_TRAILING_URL_PUNCTUATION = ".,;:!?)]}"
+
 
 def _fmt_duration(minutes: int) -> str:
     hours, mins = divmod(minutes, 60)
@@ -54,6 +69,39 @@ def _fmt_duration(minutes: int) -> str:
     if hours:
         return f"{hours} hr"
     return f"{mins} min"
+
+
+def _clean_url(raw_url: str) -> str:
+    return raw_url.rstrip(_TRAILING_URL_PUNCTUATION)
+
+
+def _normalize_url(url: str) -> str:
+    if url.lower().startswith("www."):
+        return f"https://{url}"
+    return url
+
+
+def _extract_urls(text: str) -> list[str]:
+    """Extract unique URLs from plain text, keeping their first-seen order."""
+    seen: set[str] = set()
+    urls: list[str] = []
+    for match in _URL_RE.finditer(html.unescape(text)):
+        url = _clean_url(match.group(0))
+        if not url:
+            continue
+        normalized = _normalize_url(url)
+        key = normalized.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        urls.append(normalized)
+    return urls
+
+
+def _display_url(url: str, limit: int = 34) -> str:
+    if len(url) <= limit:
+        return url
+    return f"{url[: limit - 1]}…"
 
 
 class TaskEditorDialog(QDialog):
@@ -97,7 +145,16 @@ class TaskEditorDialog(QDialog):
         self.desc_edit = QPlainTextEdit()
         self.desc_edit.setPlaceholderText("Notes")
         self.desc_edit.setFixedHeight(72)
+        self.desc_edit.textChanged.connect(self._refresh_description_links)
         layout.addWidget(self.desc_edit)
+
+        self.link_box = QWidget()
+        self.link_box.setObjectName("TaskLinkBox")
+        self.link_layout = QVBoxLayout(self.link_box)
+        self.link_layout.setContentsMargins(0, 0, 0, 0)
+        self.link_layout.setSpacing(4)
+        self.link_box.hide()
+        layout.addWidget(self.link_box)
 
         self.date_field = OptionalDateField(placeholder="Date")
         self.date_field.changed.connect(self._sync_enabled)
@@ -193,6 +250,7 @@ class TaskEditorDialog(QDialog):
     def _load(self, task: Task) -> None:
         self.title_edit.setText(task.title)
         self.desc_edit.setPlainText(task.description or "")
+        self._refresh_description_links()
         if task.due_at:
             local = to_local(task.due_at)
             self.date_field.set_value(QDate(local.year, local.month, local.day))
@@ -213,6 +271,45 @@ class TaskEditorDialog(QDialog):
                 self.until_field.set_value(
                     QDate(local_until.year, local_until.month, local_until.day)
                 )
+
+    def _refresh_description_links(self) -> None:
+        while self.link_layout.count():
+            item = self.link_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        urls = _extract_urls(self.desc_edit.toPlainText())
+        self.link_box.setVisible(bool(urls))
+        for url in urls:
+            button = QPushButton(_display_url(url))
+            button.setObjectName("DetectedLinkButton")
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setToolTip(url)
+            button.clicked.connect(lambda _checked=False, target=url: self._open_url(target))
+            copy_button = QPushButton("Copy")
+            copy_button.setObjectName("DetectedLinkCopyButton")
+            copy_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            copy_button.setToolTip("Copy link")
+            copy_button.clicked.connect(
+                lambda _checked=False, target=url, btn=copy_button: self._copy_url(target, btn)
+            )
+
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(6)
+            row_layout.addWidget(button, 1)
+            row_layout.addWidget(copy_button)
+            self.link_layout.addWidget(row)
+
+    def _open_url(self, url: str) -> None:
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _copy_url(self, url: str, button: QPushButton) -> None:
+        QApplication.clipboard().setText(url)
+        button.setText("Copied")
+        QTimer.singleShot(1000, lambda: button.setText("Copy"))
 
     def _on_duration_activated(self, index: int) -> None:
         if self.duration_combo.itemData(index) != "custom":

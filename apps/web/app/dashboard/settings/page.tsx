@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, CalendarDays, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import type { GoogleStatus, UserSettings } from "@/lib/types";
+import { useTheme, type ThemePreference } from "@/components/theme-provider";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<UserSettings>("/settings"),
@@ -17,7 +19,10 @@ export default function SettingsPage() {
   });
   const patchSettings = useMutation({
     mutationFn: (payload: Partial<UserSettings>) => api<UserSettings>("/settings", { method: "PATCH", body: JSON.stringify(payload) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
+    onSuccess: (updated) => {
+      setTheme(updated.theme);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+    },
   });
   const connectGoogle = async () => {
     const res = await api<{ url: string }>("/integrations/google/connect-url");
@@ -44,10 +49,17 @@ export default function SettingsPage() {
       </div>
       <div className="panel p-5">
         <h2 className="text-xl font-black">Theme</h2>
+        <p className="mt-2 text-[var(--muted)]">
+          System follows your browser setting. Current active theme: {resolvedTheme}.
+        </p>
         <select
           className="field mt-4 max-w-xs"
-          onChange={(event) => patchSettings.mutate({ theme: event.target.value as UserSettings["theme"] })}
-          value={settings?.theme ?? "system"}
+          onChange={(event) => {
+            const next = event.target.value as ThemePreference;
+            setTheme(next);
+            patchSettings.mutate({ theme: next });
+          }}
+          value={theme}
         >
           <option value="system">System</option>
           <option value="light">Light</option>

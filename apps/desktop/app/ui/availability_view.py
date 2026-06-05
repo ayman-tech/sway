@@ -472,10 +472,11 @@ class _DateSelectionCalendar(QWidget):
                 iso = d.isoformat()
                 in_month = d.month == self._month
                 selected = iso in self._selected
+                is_today = d == date.today()
                 btn.setText(str(d.day))
                 btn.setProperty("date_iso", iso)
                 self._set_widget_style(
-                    btn, self._day_button_style(palette, selected, in_month)
+                    btn, self._day_button_style(palette, selected, in_month, is_today)
                 )
         finally:
             self._refreshing = False
@@ -487,7 +488,7 @@ class _DateSelectionCalendar(QWidget):
 
     @staticmethod
     def _day_button_style(
-        palette: AvailabilityPalette, selected: bool, in_month: bool
+        palette: AvailabilityPalette, selected: bool, in_month: bool, is_today: bool
     ) -> str:
         if selected:
             return (
@@ -497,9 +498,11 @@ class _DateSelectionCalendar(QWidget):
             )
         color = palette.label_text.name() if in_month else palette.header_text.name()
         hover_bg = palette.free_hover.name()
+        border = "1px solid #2b6cff" if is_today else "none"
         return (
             "QPushButton { background-color: transparent; "
-            f"color: {color}; border: none; border-radius: 0; }}"
+            f"color: {color}; border: {border}; border-radius: 0; font-weight: "
+            f"{'700' if is_today else '400'}; }}"
             f"QPushButton:hover {{ background-color: {hover_bg}; }}"
         )
 
@@ -531,6 +534,7 @@ class _SetupWidget(QWidget):
         grid.setColumnStretch(1, 1)
 
         self._date_calendar = _DateSelectionCalendar()
+        self._date_calendar.set_selected_dates([date.today().isoformat()])
         grid.addWidget(self._date_calendar, 0, 0, 1, 2)
 
         self._start_hour = self._hour_combo("Start time")
@@ -550,7 +554,6 @@ class _SetupWidget(QWidget):
             self._restore(saved)
 
     def _restore(self, saved: AvailSetup) -> None:
-        self._date_calendar.set_selected_dates([d.isoformat() for d in saved.dates()])
         si = self._start_hour.findData(saved.start_hour)
         if si >= 0:
             self._start_hour.setCurrentIndex(si)

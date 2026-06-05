@@ -44,10 +44,10 @@ export default function LandingPage() {
             <div className="border-b border-[#dfd7ca] bg-white px-5 py-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-bold text-[#0f766e]">Today</p>
+                  <p className="text-sm font-bold text-[var(--accent)]">Today</p>
                   <h2 className="text-2xl font-black">Plan the day</h2>
                 </div>
-                <span className="rounded-full bg-[#e7f4f1] px-3 py-1 text-sm font-bold text-[#0f766e]">
+                <span className="rounded-full bg-[var(--soft-accent)] px-3 py-1 text-sm font-bold text-[var(--accent)]">
                   Synced
                 </span>
               </div>
@@ -57,7 +57,7 @@ export default function LandingPage() {
                 {["Design dashboard shell", "Review calendar import", "Write launch notes"].map((task, idx) => (
                   <div className="rounded-lg border border-[#e6ded2] bg-white p-4" key={task}>
                     <div className="flex items-start gap-3">
-                      <span className="mt-1 h-4 w-4 rounded-full border-2 border-[#0f766e]" />
+                      <span className="mt-1 h-4 w-4 rounded-full border-2 border-[var(--accent)]" />
                       <div>
                         <p className="font-bold">{task}</p>
                         <p className="mt-1 text-sm text-[#667085]">{idx === 0 ? "9:30 AM" : idx === 1 ? "Next 7 Days" : "Untimed"}</p>
@@ -76,7 +76,7 @@ export default function LandingPage() {
                     <div
                       className={`aspect-square rounded-md border text-xs leading-7 ${
                         [4, 11, 18].includes(index)
-                          ? "border-[#0f766e] bg-[#e7f4f1] font-black text-[#0f766e]"
+                          ? "border-[var(--accent)] bg-[var(--soft-accent)] font-black text-[var(--accent)]"
                           : "border-[#eee6da] text-[#667085]"
                       }`}
                       key={index}
@@ -95,7 +95,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-6xl gap-4 md:grid-cols-2 lg:grid-cols-5">
           {features.map((feature) => (
             <div className="rounded-lg border border-[#e6ded2] p-5" key={feature.title}>
-              <feature.icon className="text-[#0f766e]" size={24} />
+              <feature.icon className="text-[var(--accent)]" size={24} />
               <h3 className="mt-4 font-black">{feature.title}</h3>
               <p className="mt-2 text-sm leading-6 text-[#667085]">{feature.text}</p>
             </div>

@@ -4,13 +4,19 @@ from __future__ import annotations
 
 from api.auth import CurrentUser
 from api.schemas import SettingsOut, SettingsUpdate
+from postgrest.exceptions import APIError
 from sway_core.datetime_utils import from_iso, to_iso
 
 DEFAULT_SETTINGS = SettingsOut()
 
 
 def get_user_settings(user: CurrentUser) -> SettingsOut:
-    res = user.client.table("user_settings").select("*").eq("user_id", user.id).limit(1).execute()
+    try:
+        res = user.client.table("user_settings").select("*").eq("user_id", user.id).limit(1).execute()
+    except APIError as exc:
+        if exc.args and isinstance(exc.args[0], dict) and exc.args[0].get("code") == "PGRST205":
+            return DEFAULT_SETTINGS
+        raise
     if not res.data:
         return DEFAULT_SETTINGS
     row = res.data[0]
@@ -32,5 +38,10 @@ def update_user_settings(user: CurrentUser, payload: SettingsUpdate) -> Settings
         "reminders_processed_through": to_iso(merged["reminders_processed_through"]),
         "browser_notifications_enabled": merged["browser_notifications_enabled"],
     }
-    user.client.table("user_settings").upsert(row).execute()
+    try:
+        user.client.table("user_settings").upsert(row).execute()
+    except APIError as exc:
+        if exc.args and isinstance(exc.args[0], dict) and exc.args[0].get("code") == "PGRST205":
+            return SettingsOut(**merged)
+        raise
     return get_user_settings(user)

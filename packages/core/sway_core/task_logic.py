@@ -131,14 +131,35 @@ def occurrences_as_tasks(series: Task, start: datetime, end: datetime) -> list[T
     ]
 
 
+def _active_recurring_display_tasks(series: Task, horizon: datetime) -> list[Task]:
+    """List-view expansion: current occurrence plus previews up to the horizon.
+
+    A neglected recurring task can have an old current due date. Expanding from that
+    date to the horizon creates a long backlog of virtual previews, so the list only
+    keeps the actionable current occurrence and future previews.
+    """
+    if series.due_at is None:
+        return []
+    if series.due_at > horizon:
+        return []
+    display = [series]
+    preview_start = max(utc_now(), series.due_at)
+    for occurrence in occurrences_as_tasks(series, preview_start, horizon):
+        if occurrence.due_at != series.due_at:
+            display.append(occurrence)
+    return display
+
+
 def active_display_tasks(tasks: list[Task], horizon: datetime | None = None) -> list[Task]:
     horizon = horizon or (utc_now() + timedelta(days=LIST_HORIZON_DAYS))
     display: list[Task] = []
     for task in tasks:
         if task.is_recurring and task.due_at is not None:
-            display.extend(occurrences_as_tasks(task, task.due_at, horizon))
-        else:
+            display.extend(_active_recurring_display_tasks(task, horizon))
+        elif task.due_at is None or task.due_at <= horizon:
             display.append(task)
+        else:
+            continue
     return display
 
 

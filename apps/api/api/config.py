@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 def _load_dotenv() -> None:
@@ -36,6 +37,14 @@ class Settings:
     google_redirect_uri: str
 
 
+def _normalize_supabase_url(url: str) -> str:
+    cleaned = url.strip().strip("'\"")
+    parsed = urlparse(cleaned)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return cleaned.rstrip("/")
+
+
 def get_settings() -> Settings:
     _load_dotenv()
     url = os.environ.get("SUPABASE_URL")
@@ -50,7 +59,7 @@ def get_settings() -> Settings:
     api_url = os.environ.get("API_PUBLIC_URL", "http://localhost:8000")
     web_url = os.environ.get("WEB_PUBLIC_URL", "http://localhost:3000")
     return Settings(
-        supabase_url=url,
+        supabase_url=_normalize_supabase_url(url),
         supabase_key=key,
         supabase_service_role_key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY"),
         api_public_url=api_url,

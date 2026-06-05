@@ -3,13 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CalendarDays, CheckCircle2, Home, ListTodo, LogOut, Settings } from "lucide-react";
+import { CalendarCheck, CalendarDays, CheckCircle2, Home, ListTodo, LogOut, Settings } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ReminderPoller } from "@/components/reminder-poller";
+import { api } from "@/lib/api";
+import type { UserSettings } from "@/lib/types";
+import { useTheme } from "@/components/theme-provider";
 
 const items = [
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/dashboard/availability", label: "Availability", icon: CalendarCheck },
   { href: "/dashboard/completed", label: "Completed", icon: CheckCircle2 },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
@@ -18,6 +22,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const { setTheme } = useTheme();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -25,9 +30,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         router.replace("/auth");
       } else {
         setReady(true);
+        api<UserSettings>("/settings")
+          .then((settings) => setTheme(settings.theme))
+          .catch(() => undefined);
       }
     });
-  }, [router]);
+  }, [router, setTheme]);
 
   if (!ready) {
     return <div className="grid min-h-screen place-items-center text-[#667085]">Loading Sway...</div>;
@@ -45,7 +53,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             return (
               <Link
                 className={`flex items-center gap-3 rounded-lg px-3 py-3 font-bold ${
-                  active ? "bg-[#e7f4f1] text-[#0f766e]" : "text-[#475467] hover:bg-white"
+                  active
+                    ? "bg-[var(--nav-active)] text-[var(--nav-active-text)]"
+                    : "text-[#475467] hover:bg-[var(--nav-hover)]"
                 }`}
                 href={item.href}
                 key={item.href}

@@ -8,6 +8,14 @@ import { api } from "@/lib/api";
 import type { Task } from "@/lib/types";
 import { LinkedText } from "@/components/linked-text";
 
+function compareCalendarTasks(a: Task, b: Task) {
+  if (a.has_time !== b.has_time) return a.has_time ? -1 : 1;
+  if (a.has_time && b.has_time) {
+    return new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime();
+  }
+  return a.title.localeCompare(b.title);
+}
+
 export default function CalendarPage() {
   const [month, setMonth] = useState(() => new Date());
   const [selected, setSelected] = useState(() => new Date());
@@ -30,7 +38,10 @@ export default function CalendarPage() {
     }
     return result;
   }, [range]);
-  const tasksFor = (day: Date) => (data ?? []).filter((task) => task.due_at && isSameDay(new Date(task.due_at), day));
+  const tasksFor = (day: Date) =>
+    (data ?? [])
+      .filter((task) => task.due_at && isSameDay(new Date(task.due_at), day))
+      .sort(compareCalendarTasks);
   const selectedTasks = tasksFor(selected);
 
   return (
@@ -89,10 +100,10 @@ export default function CalendarPage() {
         <div className="mt-4 space-y-3">
           {selectedTasks.length ? (
             selectedTasks.map((task) => (
-              <div className="rounded-lg border border-[#e6ded2] bg-white p-3" key={`${task.id}-${task.due_at}`}>
-                <p className="font-black">{task.title}</p>
+              <div className="min-w-0 rounded-lg border border-[#e6ded2] bg-white p-3" key={`${task.id}-${task.due_at}`}>
+                <p className="break-words font-black">{task.title}</p>
                 {task.description ? (
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#667085]">
+                  <p className="mt-1 min-w-0 whitespace-pre-wrap break-words text-sm text-[#667085] [overflow-wrap:anywhere]">
                     <LinkedText text={task.description} />
                   </p>
                 ) : null}

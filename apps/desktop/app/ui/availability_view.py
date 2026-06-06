@@ -31,7 +31,10 @@ from PySide6.QtWidgets import (
 
 from app.repositories.settings_repo import SettingsRepository
 from app.services.auth_service import AuthService
-from app.services.availability_share_service import AvailabilityShareService
+from app.services.availability_share_service import (
+    AvailabilityShareResult,
+    AvailabilityShareService,
+)
 from app.services.task_service import TaskService
 from app.ui.theme import get_theme
 from app.utils.datetime_utils import to_local
@@ -702,6 +705,28 @@ class _GridWidget(QWidget):
         self._share_status.hide()
         layout.addWidget(self._share_status)
 
+        self._share_result = QWidget()
+        self._share_result.setObjectName("AuthCard")
+        share_result_layout = QHBoxLayout(self._share_result)
+        share_result_layout.setContentsMargins(12, 10, 12, 10)
+        share_result_layout.setSpacing(10)
+        share_result_text = QVBoxLayout()
+        share_result_text.setSpacing(3)
+        self._share_url = QLabel()
+        self._share_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._share_url.setWordWrap(True)
+        share_result_text.addWidget(self._share_url)
+        self._share_expiration = QLabel()
+        self._share_expiration.setObjectName("TaskSubtitle")
+        share_result_text.addWidget(self._share_expiration)
+        share_result_layout.addLayout(share_result_text, 1)
+        copy_share_btn = QPushButton("Copy")
+        copy_share_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        copy_share_btn.clicked.connect(self._copy_share_url)
+        share_result_layout.addWidget(copy_share_btn)
+        self._share_result.hide()
+        layout.addWidget(self._share_result)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(False)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -756,11 +781,25 @@ class _GridWidget(QWidget):
         self._share_status.setText(text)
         self._share_status.setVisible(bool(text))
 
+    def set_share_result(self, result: AvailabilityShareResult) -> None:
+        self._share_url.setText(result.url)
+        expires = datetime.fromisoformat(result.expires_at.replace("Z", "+00:00")).astimezone()
+        expiration = expires.strftime("%b %d, %Y at %I:%M %p").replace(" 0", " ")
+        self._share_expiration.setText(f"Expires {expiration}")
+        self._share_result.show()
+
+    def clear_share_result(self) -> None:
+        self._share_result.hide()
+
+    def _copy_share_url(self) -> None:
+        QApplication.clipboard().setText(self._share_url.text())
+        self.set_share_status("Share link copied to clipboard.")
+
 
 class AvailabilityView(QWidget):
     """5th sidebar view: personal availability grid with task overlay."""
 
-    _shareResult = Signal(int, bool, str)
+    _shareResult = Signal(int, bool, object)
 
     def __init__(
         self,
@@ -868,6 +907,7 @@ class AvailabilityView(QWidget):
         request_id = self._share_request_id
         self._share_grid.set_share_busy(True)
         self._share_grid.set_share_status("")
+        self._share_grid.clear_share_result()
         threading.Thread(
             target=self._share_worker,
             args=(request_id, snapshot, timezone_name),
@@ -876,19 +916,20 @@ class AvailabilityView(QWidget):
 
     def _share_worker(self, request_id: int, snapshot: dict, timezone_name: str) -> None:
         try:
-            url = self._share_service.create(snapshot, timezone_name) if self._share_service else ""
-            self._shareResult.emit(request_id, True, url)
+            result = self._share_service.create(snapshot, timezone_name) if self._share_service else None
+            self._shareResult.emit(request_id, True, result)
         except Exception as exc:  # noqa: BLE001 - surface a clean message in the UI
             self._shareResult.emit(
                 request_id, False, str(exc) or "Unable to create share link."
             )
 
-    def _on_share_result(self, request_id: int, ok: bool, message: str) -> None:
+    def _on_share_result(self, request_id: int, ok: bool, result: object) -> None:
         if self._share_grid is None or request_id != self._share_request_id:
             return
         self._share_grid.set_share_busy(False)
-        if ok:
-            QApplication.clipboard().setText(message)
+        if ok and isinstance(result, AvailabilityShareResult):
+            QApplication.clipboard().setText(result.url)
+            self._share_grid.set_share_result(result)
             self._share_grid.set_share_status("Share link copied to clipboard.")
         else:
-            self._share_grid.set_share_status(message)
+            self._share_grid.set_share_status(str(result))

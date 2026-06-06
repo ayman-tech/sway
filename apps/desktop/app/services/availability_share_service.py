@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -12,6 +13,12 @@ from app.services.auth_service import AuthService
 
 class AvailabilityShareError(Exception):
     """User-facing availability-share failure."""
+
+
+@dataclass(frozen=True)
+class AvailabilityShareResult:
+    url: str
+    expires_at: str
 
 
 class AvailabilityShareService:
@@ -25,7 +32,7 @@ class AvailabilityShareService:
     def is_available(self) -> bool:
         return self.is_configured() and self._auth.user is not None
 
-    def create(self, snapshot: dict, creator_timezone: str) -> str:
+    def create(self, snapshot: dict, creator_timezone: str) -> AvailabilityShareResult:
         api_url = load_api_public_url()
         token = self._auth.access_token
         if not api_url:
@@ -50,13 +57,24 @@ class AvailabilityShareService:
                 result = json.loads(response.read())
         except HTTPError as exc:
             raise AvailabilityShareError(_http_error_message(exc)) from exc
-        except (URLError, OSError, ValueError) as exc:
-            raise AvailabilityShareError("Unable to create share link. Check your connection.") from exc
+        except (URLError, OSError) as exc:
+            raise AvailabilityShareError(
+                f"Cannot reach the Sway API at {api_url}. Check API_PUBLIC_URL and ensure "
+                "the API server is running."
+            ) from exc
+        except ValueError as exc:
+            raise AvailabilityShareError("The server returned an invalid response.") from exc
 
         url = result.get("url")
-        if not isinstance(url, str) or not url:
+        expires_at = result.get("expires_at")
+        if (
+            not isinstance(url, str)
+            or not url
+            or not isinstance(expires_at, str)
+            or not expires_at
+        ):
             raise AvailabilityShareError("The server returned an invalid share link.")
-        return url
+        return AvailabilityShareResult(url=url, expires_at=expires_at)
 
 
 def _http_error_message(exc: HTTPError) -> str:

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, CalendarDays, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, CalendarDays, RefreshCw, Save, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
 import type { GoogleStatus, UserSettings } from "@/lib/types";
 import { useTheme, type ThemePreference } from "@/components/theme-provider";
@@ -9,6 +10,8 @@ import { useTheme, type ThemePreference } from "@/components/theme-provider";
 export default function SettingsPage() {
   const qc = useQueryClient();
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<UserSettings>("/settings"),
@@ -22,8 +25,14 @@ export default function SettingsPage() {
     onSuccess: (updated) => {
       setTheme(updated.theme);
       qc.invalidateQueries({ queryKey: ["settings"] });
+      window.dispatchEvent(new CustomEvent("sway-profile-updated", { detail: updated }));
     },
   });
+  useEffect(() => {
+    if (!settings) return;
+    setFirstName(settings.first_name ?? "");
+    setLastName(settings.last_name ?? "");
+  }, [settings]);
   const connectGoogle = async () => {
     const res = await api<{ url: string }>("/integrations/google/connect-url");
     window.location.href = res.url;
@@ -46,6 +55,37 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-3xl font-black">Settings</h1>
         <p className="mt-1 text-[#667085]">Configure the web app experience.</p>
+      </div>
+      <div className="panel p-5">
+        <h2 className="flex items-center gap-2 text-xl font-black">
+          <UserRound size={20} /> Profile
+        </h2>
+        <p className="mt-2 text-[var(--muted)]">
+          Your first name appears on new public availability links.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input
+            className="field"
+            maxLength={80}
+            onChange={(event) => setFirstName(event.target.value)}
+            placeholder="First name"
+            value={firstName}
+          />
+          <input
+            className="field"
+            maxLength={80}
+            onChange={(event) => setLastName(event.target.value)}
+            placeholder="Last name"
+            value={lastName}
+          />
+        </div>
+        <button
+          className="btn btn-primary mt-4"
+          disabled={patchSettings.isPending}
+          onClick={() => patchSettings.mutate({ first_name: firstName.trim() || null, last_name: lastName.trim() || null })}
+        >
+          <Save size={18} /> Save profile
+        </button>
       </div>
       <div className="panel p-5">
         <h2 className="text-xl font-black">Theme</h2>

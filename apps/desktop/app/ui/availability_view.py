@@ -9,12 +9,14 @@ time is assumed to last 1 hour). State is persisted to the `settings` table.
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimeZone, Signal
 from PySide6.QtGui import QColor, QCursor, QPainter, QPen
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
@@ -28,12 +30,15 @@ from PySide6.QtWidgets import (
 )
 
 from app.repositories.settings_repo import SettingsRepository
+from app.services.auth_service import AuthService
+from app.services.availability_share_service import AvailabilityShareService
 from app.services.task_service import TaskService
 from app.ui.theme import get_theme
 from app.utils.datetime_utils import to_local
 
 _SETUP_KEY = "availability_setup"
 _STATE_KEY = "availability_state"
+_MAX_DATES = 14
 
 
 @dataclass(frozen=True)
@@ -349,6 +354,9 @@ class _DateSelectionCalendar(QWidget):
         self._nav_buttons: list[QPushButton] = []
         self._month_label = QLabel()
         self._refreshing = False
+        self._drag_active = False
+        self._drag_mark = True
+        self._drag_visited: set[str] = set()
         self._build()
         self._refresh()
 
@@ -368,6 +376,35 @@ class _DateSelectionCalendar(QWidget):
         if event.type() == QEvent.Type.StyleChange and not self._refreshing:
             self._refresh()
         return super().event(event)
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        if watched not in self._day_buttons:
+            return super().eventFilter(watched, event)
+
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() != Qt.MouseButton.LeftButton:
+                return False
+            iso = watched.property("date_iso")
+            if not iso:
+                return True
+            self._drag_active = True
+            self._drag_mark = iso not in self._selected
+            self._drag_visited.clear()
+            self._paint_date(iso)
+            return True
+
+        if event.type() == QEvent.Type.MouseMove and self._drag_active:
+            button = self.childAt(self.mapFromGlobal(event.globalPosition().toPoint()))
+            if button in self._day_buttons:
+                self._paint_date(button.property("date_iso"))
+            return True
+
+        if event.type() == QEvent.Type.MouseButtonRelease and self._drag_active:
+            self._drag_active = False
+            self._drag_visited.clear()
+            return True
+
+        return super().eventFilter(watched, event)
 
     def _build(self) -> None:
         outer = QVBoxLayout(self)
@@ -407,6 +444,7 @@ class _DateSelectionCalendar(QWidget):
                 btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 btn.setFixedHeight(34)
                 btn.clicked.connect(lambda _checked=False, b=btn: self._toggle_button_date(b))
+                btn.installEventFilter(self)
                 self._day_buttons.append(btn)
                 grid.addWidget(btn, r + 1, c)
         outer.addLayout(grid)
@@ -428,10 +466,23 @@ class _DateSelectionCalendar(QWidget):
         iso = button.property("date_iso")
         if not iso:
             return
-        if iso in self._selected:
-            self._selected.remove(iso)
-        else:
+        self._set_date_selected(iso, iso not in self._selected)
+
+    def _paint_date(self, iso: str) -> None:
+        if not iso or iso in self._drag_visited:
+            return
+        self._drag_visited.add(iso)
+        self._set_date_selected(iso, self._drag_mark)
+
+    def _set_date_selected(self, iso: str, selected: bool) -> None:
+        if (iso in self._selected) == selected:
+            return
+        if selected:
+            if len(self._selected) >= _MAX_DATES:
+                return
             self._selected.add(iso)
+        else:
+            self._selected.remove(iso)
         self._refresh()
         self.datesChanged.emit()
 
@@ -522,7 +573,9 @@ class _SetupWidget(QWidget):
         outer.setSpacing(14)
         outer.addStretch(1)
 
-        sub = QLabel("Pick dates for your availability. Your timed tasks show as busy.")
+        sub = QLabel(
+            f"Click or drag to pick up to {_MAX_DATES} dates. Your timed tasks show as busy."
+        )
         sub.setObjectName("TaskSubtitle")
         sub.setWordWrap(True)
         outer.addWidget(sub)
@@ -592,8 +645,10 @@ class _SetupWidget(QWidget):
         if not selected:
             QMessageBox.warning(self, "Missing dates", "Please choose at least one date.")
             return
-        if len(selected) > 14:
-            QMessageBox.warning(self, "Too many dates", "Please choose 14 dates or fewer.")
+        if len(selected) > _MAX_DATES:
+            QMessageBox.warning(
+                self, "Too many dates", f"Please choose {_MAX_DATES} dates or fewer."
+            )
             return
         self.confirmed.emit(
             AvailSetup(selected[0], selected[-1], start_h, end_h, 60, selected)
@@ -605,12 +660,16 @@ class _GridWidget(QWidget):
 
     back = Signal()
     exportRequested = Signal()
+    shareRequested = Signal()
     stateChanged = Signal()
 
-    def __init__(self, setup: AvailSetup, state: AvailState, busy: BusyMap) -> None:
+    def __init__(
+        self, setup: AvailSetup, state: AvailState, busy: BusyMap, share_enabled: bool
+    ) -> None:
         super().__init__()
         self._grid: AvailabilityGrid | None = None
         self._legend_swatches: list[tuple[QLabel, str]] = []
+        self._share_enabled = share_enabled
         self._build(setup, state, busy)
 
     def _build(self, setup: AvailSetup, state: AvailState, busy: BusyMap) -> None:
@@ -625,11 +684,23 @@ class _GridWidget(QWidget):
         back_btn.clicked.connect(self.back)
         toolbar.addWidget(back_btn)
         toolbar.addStretch(1)
+        self._share_btn = QPushButton("Share link")
+        self._share_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._share_btn.setEnabled(self._share_enabled)
+        if not self._share_enabled:
+            self._share_btn.setToolTip("Sign in and configure API_PUBLIC_URL to share links.")
+        self._share_btn.clicked.connect(self.shareRequested)
+        toolbar.addWidget(self._share_btn)
         export_btn = QPushButton("Export HTML")
         export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         export_btn.clicked.connect(self.exportRequested)
         toolbar.addWidget(export_btn)
         layout.addLayout(toolbar)
+
+        self._share_status = QLabel()
+        self._share_status.setObjectName("TaskSubtitle")
+        self._share_status.hide()
+        layout.addWidget(self._share_status)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(False)
@@ -677,18 +748,37 @@ class _GridWidget(QWidget):
     def current_state(self) -> AvailState:
         return self._grid.state_as_dict() if self._grid else {}
 
+    def set_share_busy(self, busy: bool) -> None:
+        self._share_btn.setDisabled(busy or not self._share_enabled)
+        self._share_btn.setText("Creating link..." if busy else "Share link")
+
+    def set_share_status(self, text: str) -> None:
+        self._share_status.setText(text)
+        self._share_status.setVisible(bool(text))
+
 
 class AvailabilityView(QWidget):
     """5th sidebar view: personal availability grid with task overlay."""
 
-    def __init__(self, settings_repo: SettingsRepository, task_service: TaskService) -> None:
+    _shareResult = Signal(int, bool, str)
+
+    def __init__(
+        self,
+        settings_repo: SettingsRepository,
+        task_service: TaskService,
+        auth_service: AuthService | None = None,
+    ) -> None:
         super().__init__()
         self._settings = settings_repo
         self._tasks = task_service
+        self._share_service = AvailabilityShareService(auth_service) if auth_service else None
+        self._share_grid: _GridWidget | None = None
+        self._share_request_id = 0
         self._stack = QStackedWidget()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._stack)
+        self._shareResult.connect(self._on_share_result)
         self._show_setup()
 
     # ---- persistence ----
@@ -718,6 +808,8 @@ class AvailabilityView(QWidget):
             w.deleteLater()
 
     def _show_setup(self) -> None:
+        self._share_request_id += 1
+        self._share_grid = None
         self._clear_from(0)
         setup_w = _SetupWidget(self._load_setup())
         setup_w.confirmed.connect(self._on_setup_confirmed)
@@ -731,13 +823,18 @@ class AvailabilityView(QWidget):
     def _show_grid(self, setup: AvailSetup) -> None:
         self._clear_from(1)
         busy = compute_busy(setup, self._tasks)
-        grid_w = _GridWidget(setup, self._load_state(), busy)
+        share_enabled = self._share_service is not None and self._share_service.is_available()
+        grid_w = _GridWidget(setup, self._load_state(), busy, share_enabled)
+        self._share_grid = grid_w
         grid_w.back.connect(self._show_setup)
         grid_w.stateChanged.connect(
             lambda: self._settings.set(_STATE_KEY, json.dumps(grid_w.current_state()))
         )
         grid_w.exportRequested.connect(
             lambda: self._on_export(setup, grid_w.current_state(), busy)
+        )
+        grid_w.shareRequested.connect(
+            lambda: self._on_share(setup, grid_w.current_state(), busy)
         )
         self._stack.addWidget(grid_w)
         self._stack.setCurrentWidget(grid_w)
@@ -746,3 +843,52 @@ class AvailabilityView(QWidget):
         from app.utils.availability_export import export_and_open
 
         export_and_open(setup, state, busy)
+
+    def _on_share(self, setup: AvailSetup, state: AvailState, busy: BusyMap) -> None:
+        if self._share_service is None or self._share_grid is None:
+            return
+        dates = setup.dates()
+        busy_slots = {
+            d.isoformat(): sorted(busy.get(d.isoformat(), {})) for d in dates
+        }
+        snapshot = {
+            "selected_dates": [d.isoformat() for d in dates],
+            "start_hour": setup.start_hour,
+            "end_hour": setup.end_hour,
+            "available_slots": {
+                d.isoformat(): sorted(
+                    set(state.get(d.isoformat(), [])) - set(busy_slots[d.isoformat()])
+                )
+                for d in dates
+            },
+            "busy_slots": busy_slots,
+        }
+        timezone_name = bytes(QTimeZone.systemTimeZoneId()).decode() or "UTC"
+        self._share_request_id += 1
+        request_id = self._share_request_id
+        self._share_grid.set_share_busy(True)
+        self._share_grid.set_share_status("")
+        threading.Thread(
+            target=self._share_worker,
+            args=(request_id, snapshot, timezone_name),
+            daemon=True,
+        ).start()
+
+    def _share_worker(self, request_id: int, snapshot: dict, timezone_name: str) -> None:
+        try:
+            url = self._share_service.create(snapshot, timezone_name) if self._share_service else ""
+            self._shareResult.emit(request_id, True, url)
+        except Exception as exc:  # noqa: BLE001 - surface a clean message in the UI
+            self._shareResult.emit(
+                request_id, False, str(exc) or "Unable to create share link."
+            )
+
+    def _on_share_result(self, request_id: int, ok: bool, message: str) -> None:
+        if self._share_grid is None or request_id != self._share_request_id:
+            return
+        self._share_grid.set_share_busy(False)
+        if ok:
+            QApplication.clipboard().setText(message)
+            self._share_grid.set_share_status("Share link copied to clipboard.")
+        else:
+            self._share_grid.set_share_status(message)

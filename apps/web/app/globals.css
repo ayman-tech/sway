@@ -193,6 +193,11 @@ select {
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
+.availability-date-grid {
+  touch-action: none;
+  user-select: none;
+}
+
 .availability-date:hover {
   background: var(--nav-hover);
 }
@@ -268,6 +273,14 @@ select {
   height: 34px;
   min-width: 92px;
   touch-action: none;
+}
+
+.availability-slot:disabled {
+  opacity: 1;
+}
+
+.availability-slot:not(:disabled) {
+  cursor: pointer;
 }
 
 .availability-free {

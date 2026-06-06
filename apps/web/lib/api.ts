@@ -31,3 +31,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+export async function publicApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const message = await res.text();
+    throw new Error(message || `Request failed: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}

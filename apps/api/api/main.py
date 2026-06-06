@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from api.auth import CurrentUser, get_current_user
+from api.availability_shares import create_share, get_share
 from api.config import get_settings
 from api.google_integration import (
     connect_url,
@@ -18,6 +19,9 @@ from api.google_integration import (
     sync_google,
 )
 from api.schemas import (
+    AvailabilityShareCreate,
+    AvailabilityShareCreatedOut,
+    AvailabilityShareOut,
     GoogleConnectUrlOut,
     GoogleStatusOut,
     GoogleSyncOut,
@@ -123,6 +127,19 @@ def get_completed(user: CurrentUser = Depends(get_current_user)) -> list[TaskGro
 @app.get("/tasks/calendar", response_model=list[TaskOut])
 def get_calendar(start: datetime, end: datetime, user: CurrentUser = Depends(get_current_user)) -> list[TaskOut]:
     return [task_out(task) for task in calendar_for(user, start, end)]
+
+
+@app.post("/availability-shares", response_model=AvailabilityShareCreatedOut)
+def post_availability_share(
+    payload: AvailabilityShareCreate,
+    user: CurrentUser = Depends(get_current_user),
+) -> AvailabilityShareCreatedOut:
+    return create_share(user, payload)
+
+
+@app.get("/availability-shares/{token}", response_model=AvailabilityShareOut)
+def get_availability_share(token: str) -> AvailabilityShareOut:
+    return get_share(token)
 
 
 @app.get("/settings", response_model=SettingsOut)

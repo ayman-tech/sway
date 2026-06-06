@@ -28,6 +28,8 @@ export type TaskGroup = {
 };
 
 export type UserSettings = {
+  first_name: string | null;
+  last_name: string | null;
   theme: "light" | "dark" | "system";
   reminders_processed_through: string | null;
   browser_notifications_enabled: boolean;
@@ -36,4 +38,27 @@ export type UserSettings = {
 export type GoogleStatus = {
   connected: boolean;
   account: string | null;
+};
+
+export type AvailabilitySlots = Record<string, number[]>;
+
+export type AvailabilitySnapshot = {
+  selected_dates: string[];
+  start_hour: number;
+  end_hour: number;
+  available_slots: AvailabilitySlots;
+  busy_slots: AvailabilitySlots;
+};
+
+export type AvailabilityShareCreated = {
+  url: string;
+  expires_at: string;
+};
+
+export type AvailabilityShare = {
+  snapshot: AvailabilitySnapshot;
+  first_name: string | null;
+  creator_timezone: string;
+  created_at: string;
+  expires_at: string;
 };

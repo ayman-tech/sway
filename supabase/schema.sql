@@ -51,11 +51,16 @@ create policy "tasks_delete_own" on public.tasks
 
 create table if not exists public.user_settings (
     user_id uuid primary key references auth.users(id) on delete cascade,
+    first_name text,
+    last_name text,
     theme text not null default 'system',
     reminders_processed_through timestamptz,
     browser_notifications_enabled boolean not null default false,
     updated_at timestamptz not null default now()
 );
+
+alter table public.user_settings add column if not exists first_name text;
+alter table public.user_settings add column if not exists last_name text;
 
 alter table public.user_settings enable row level security;
 
@@ -83,3 +88,35 @@ create table if not exists public.google_calendar_connections (
 );
 
 alter table public.google_calendar_connections enable row level security;
+
+create table if not exists public.availability_shares (
+    id uuid primary key,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    token_hash text not null unique,
+    snapshot jsonb not null,
+    first_name text,
+    creator_timezone text not null,
+    created_at timestamptz not null default now(),
+    expires_at timestamptz not null
+);
+
+alter table public.availability_shares add column if not exists first_name text;
+
+create index if not exists idx_availability_shares_expires
+    on public.availability_shares (expires_at);
+create index if not exists idx_availability_shares_user_created
+    on public.availability_shares (user_id, created_at desc);
+
+alter table public.availability_shares enable row level security;
+
+-- No RLS policies are intentionally defined for availability_shares. The FastAPI
+-- service-role client is the only reader/writer, so public links never expose the
+-- table, owner id, or token hash through Supabase's public API.
+
+-- Optional daily cleanup when pg_cron is available in the Supabase project:
+-- create extension if not exists pg_cron;
+-- select cron.schedule(
+--     'delete-expired-availability-shares',
+--     '17 3 * * *',
+--     $$delete from public.availability_shares where expires_at <= now()$$
+-- );

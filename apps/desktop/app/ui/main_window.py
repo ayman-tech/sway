@@ -239,7 +239,7 @@ class MainWindow(QWidget):
         self._register_view("completed", self._completed_view)
 
         # Availability (personal when2meet-style grid)
-        self._availability_view = AvailabilityView(self._settings_repo, self._service)
+        self._availability_view = AvailabilityView(self._settings_repo, self._service, self._auth)
         self._register_view("availability", self._availability_view)
 
         # Settings

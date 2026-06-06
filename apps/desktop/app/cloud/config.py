@@ -6,7 +6,8 @@ secrets — Row-Level Security is what protects data — so storing them locally
 Resolved from, in order:
   1. environment variables SUPABASE_URL / SUPABASE_ANON_KEY
   2. a `.env` file in the working directory, desktop app root, or repo root
-  3. a JSON file `supabase.json` in the app data dir: {"url": "...", "anon_key": "..."}
+  3. a JSON file `supabase.json` in the app data dir:
+     {"url": "...", "anon_key": "...", "api_url": "..."}
 """
 
 from __future__ import annotations
@@ -99,6 +100,20 @@ def load_config() -> SupabaseConfig | None:
 
 def is_configured() -> bool:
     return load_config() is not None
+
+
+def load_api_public_url() -> str | None:
+    """Return the FastAPI base URL used by authenticated desktop-only requests."""
+    _load_dotenv()
+    url = os.environ.get("API_PUBLIC_URL")
+    if not url:
+        path = _config_path()
+        if path.exists():
+            try:
+                url = json.loads(path.read_text()).get("api_url")
+            except (OSError, ValueError):
+                return None
+    return url.strip().rstrip("/") if url else None
 
 
 def load_google_config() -> GoogleConfig | None:

@@ -37,6 +37,14 @@ class AuthService:
     def user(self) -> AuthUser | None:
         return self._user
 
+    @property
+    def access_token(self) -> str | None:
+        if self._client is not None:
+            session = self._client.auth.get_session()
+            if session is not None:
+                return session.access_token
+        return self._settings.get(_ACCESS_KEY) or None
+
     @staticmethod
     def is_configured() -> bool:
         return is_configured()

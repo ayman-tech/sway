@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TaskOut(BaseModel):
@@ -56,12 +56,16 @@ class MeOut(BaseModel):
 
 
 class SettingsOut(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
     theme: str = "system"
     reminders_processed_through: datetime | None = None
     browser_notifications_enabled: bool = False
 
 
 class SettingsUpdate(BaseModel):
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
     theme: str | None = None
     reminders_processed_through: datetime | None = None
     browser_notifications_enabled: bool | None = None
@@ -85,3 +89,54 @@ class GoogleConnectUrlOut(BaseModel):
 
 class GoogleSyncOut(BaseModel):
     imported: int
+
+
+class AvailabilitySnapshot(BaseModel):
+    selected_dates: list[date] = Field(min_length=1, max_length=14)
+    start_hour: int = Field(ge=0, le=23)
+    end_hour: int = Field(ge=1, le=24)
+    available_slots: dict[str, list[int]] = Field(default_factory=dict)
+    busy_slots: dict[str, list[int]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_snapshot(self) -> "AvailabilitySnapshot":
+        if self.end_hour <= self.start_hour:
+            raise ValueError("End hour must be after start hour.")
+        selected = [value.isoformat() for value in self.selected_dates]
+        if len(set(selected)) != len(selected):
+            raise ValueError("Selected dates must be unique.")
+        selected_set = set(selected)
+        slot_count = self.end_hour - self.start_hour
+        for mapping_name, mapping in (
+            ("available_slots", self.available_slots),
+            ("busy_slots", self.busy_slots),
+        ):
+            if set(mapping) - selected_set:
+                raise ValueError(f"{mapping_name} contains an unselected date.")
+            for slots in mapping.values():
+                if len(slots) != len(set(slots)):
+                    raise ValueError(f"{mapping_name} contains duplicate slots.")
+                if any(slot < 0 or slot >= slot_count for slot in slots):
+                    raise ValueError(f"{mapping_name} contains an invalid slot.")
+        for date_iso in selected_set:
+            if set(self.available_slots.get(date_iso, [])) & set(self.busy_slots.get(date_iso, [])):
+                raise ValueError("Available and busy slots cannot overlap.")
+        return self
+
+
+class AvailabilityShareCreate(BaseModel):
+    snapshot: AvailabilitySnapshot
+    creator_timezone: str = Field(min_length=1, max_length=128)
+
+
+class AvailabilityShareCreatedOut(BaseModel):
+    url: str
+    expires_at: datetime
+
+
+class AvailabilityShareOut(BaseModel):
+    snapshot: AvailabilitySnapshot
+    first_name: str | None = None
+    creator_timezone: str
+    created_at: datetime
+    expires_at: datetime

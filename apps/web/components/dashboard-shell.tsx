@@ -25,6 +25,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [displayName, setDisplayName] = useState("");
   const { setTheme } = useTheme();
   const qc = useQueryClient();
   const create = useMutation({
@@ -45,11 +46,34 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       } else {
         setReady(true);
         api<UserSettings>("/settings")
-          .then((settings) => setTheme(settings.theme))
+          .then(async (settings) => {
+            let active = settings;
+            const metadata = data.session.user.user_metadata;
+            if (!settings.first_name && metadata?.first_name) {
+              active = await api<UserSettings>("/settings", {
+                method: "PATCH",
+                body: JSON.stringify({
+                  first_name: metadata.first_name,
+                  last_name: metadata.last_name ?? null,
+                }),
+              });
+            }
+            setTheme(active.theme);
+            setDisplayName([active.first_name, active.last_name].filter(Boolean).join(" "));
+          })
           .catch(() => undefined);
       }
     });
   }, [router, setTheme]);
+
+  useEffect(() => {
+    const updateName = (event: Event) => {
+      const settings = (event as CustomEvent<UserSettings>).detail;
+      setDisplayName([settings.first_name, settings.last_name].filter(Boolean).join(" "));
+    };
+    window.addEventListener("sway-profile-updated", updateName);
+    return () => window.removeEventListener("sway-profile-updated", updateName);
+  }, []);
 
   if (!ready) {
     return <div className="grid min-h-screen place-items-center text-[#667085]">Loading Sway...</div>;
@@ -82,8 +106,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        {displayName ? <p className="mt-8 truncate px-3 text-sm font-bold text-[var(--muted)]">{displayName}</p> : null}
         <button
-          className="btn btn-secondary mt-8 w-full"
+          className={`btn btn-secondary w-full ${displayName ? "mt-3" : "mt-8"}`}
           onClick={async () => {
             await supabase.auth.signOut();
             router.replace("/");

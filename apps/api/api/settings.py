@@ -21,6 +21,8 @@ def get_user_settings(user: CurrentUser) -> SettingsOut:
         return DEFAULT_SETTINGS
     row = res.data[0]
     return SettingsOut(
+        first_name=row.get("first_name"),
+        last_name=row.get("last_name"),
         theme=row.get("theme") or "system",
         reminders_processed_through=from_iso(row.get("reminders_processed_through")),
         browser_notifications_enabled=bool(row.get("browser_notifications_enabled")),
@@ -34,6 +36,8 @@ def update_user_settings(user: CurrentUser, payload: SettingsUpdate) -> Settings
         merged[key] = value
     row = {
         "user_id": user.id,
+        "first_name": (merged["first_name"] or "").strip() or None,
+        "last_name": (merged["last_name"] or "").strip() or None,
         "theme": merged["theme"],
         "reminders_processed_through": to_iso(merged["reminders_processed_through"]),
         "browser_notifications_enabled": merged["browser_notifications_enabled"],

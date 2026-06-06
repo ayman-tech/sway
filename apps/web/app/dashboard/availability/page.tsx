@@ -11,11 +11,21 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Copy, Download, Edit3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Download, Edit3, Loader2, Share2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Task } from "@/lib/types";
+import type { AvailabilityShareCreated, AvailabilitySlots, Task } from "@/lib/types";
+import {
+  dateFromIso,
+  hourLabel,
+  makeSnapshot,
+  selectedLabel,
+  shortHourLabel,
+  todayIso,
+  toDateIso,
+} from "@/lib/availability";
+import { AvailabilityGrid, AvailabilityLegend } from "@/components/availability-grid";
 
 type AvailabilitySetup = {
   selectedDates: string[];
@@ -23,40 +33,12 @@ type AvailabilitySetup = {
   endHour: number;
 };
 
-type AvailabilityState = Record<string, number[]>;
-type BusyMap = Record<string, Record<number, string>>;
+type AvailabilityState = AvailabilitySlots;
+type BusyMap = AvailabilitySlots;
 
 const SETUP_KEY = "sway.availability.setup";
 const STATE_KEY = "sway.availability.state";
 const MAX_DATES = 14;
-
-function todayIso() {
-  return toDateIso(new Date());
-}
-
-function toDateIso(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function dateFromIso(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function hourLabel(hour: number) {
-  if (hour === 0 || hour === 24) return "12:00 AM";
-  if (hour === 12) return "12:00 PM";
-  return `${hour % 12}:00 ${hour < 12 ? "AM" : "PM"}`;
-}
-
-function shortHourLabel(hour: number) {
-  if (hour === 0 || hour === 24) return "12 AM";
-  if (hour === 12) return "12 PM";
-  return `${hour % 12} ${hour < 12 ? "AM" : "PM"}`;
-}
 
 function readSetup(): AvailabilitySetup {
   if (typeof window === "undefined") {
@@ -81,14 +63,6 @@ function readAvailabilityState(): AvailabilityState {
   } catch {
     return {};
   }
-}
-
-function selectedLabel(dates: string[]) {
-  const parsed = dates.map(dateFromIso).sort((a, b) => a.getTime() - b.getTime());
-  if (parsed.length <= 5) {
-    return parsed.map((date) => format(date, "MMM d")).join(", ");
-  }
-  return `${format(parsed[0], "MMM d")} to ${format(parsed[parsed.length - 1], "MMM d")} · ${parsed.length} selected dates`;
 }
 
 function monthDays(month: Date) {
@@ -128,7 +102,7 @@ function computeBusy(tasks: Task[], setup: AvailabilitySetup): BusyMap {
       slotStart.setHours(setup.startHour + row, 0, 0, 0);
       const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
       if (start < slotEnd && end > slotStart) {
-        busy[dateIso] = { ...(busy[dateIso] ?? {}), [row]: task.title };
+        busy[dateIso] = Array.from(new Set([...(busy[dateIso] ?? []), row])).sort((a, b) => a - b);
       }
     }
   }
@@ -142,7 +116,7 @@ function initialAvailability(setup: AvailabilitySetup, saved: AvailabilityState,
       next[dateIso] = saved[dateIso].filter((slot) => slot >= 0 && slot < setup.endHour - setup.startHour);
       continue;
     }
-    const busySlots = new Set(Object.keys(busy[dateIso] ?? {}).map(Number));
+    const busySlots = new Set(busy[dateIso] ?? []);
     next[dateIso] = Array.from({ length: setup.endHour - setup.startHour }, (_, index) => index).filter(
       (slot) => !busySlots.has(slot),
     );
@@ -168,7 +142,7 @@ function buildAvailabilityHtml(setup: AvailabilitySetup, availability: Availabil
     .map((row) => {
       const cells = dates
         .map((dateIso) => {
-          const cls = busy[dateIso]?.[row] ? "busy" : availability[dateIso]?.includes(row) ? "available" : "free";
+          const cls = busy[dateIso]?.includes(row) ? "busy" : availability[dateIso]?.includes(row) ? "available" : "free";
           return `<td class="slot ${cls}"></td>`;
         })
         .join("");
@@ -191,9 +165,32 @@ export default function AvailabilityPage() {
   const [availability, setAvailability] = useState<AvailabilityState>({});
   const [savedState, setSavedState] = useState<AvailabilityState>({});
   const [message, setMessage] = useState("");
+  const [shareResult, setShareResult] = useState<AvailabilityShareCreated | null>(null);
   const [drag, setDrag] = useState<{ mark: boolean; last: string } | null>(null);
+  const dateGridRef = useRef<HTMLDivElement>(null);
+  const dateDragRef = useRef<{ pointerId: number; mark: boolean; visited: Set<string> } | null>(null);
+  const suppressDateClickRef = useRef(false);
   const today = useMemo(() => new Date(), []);
-  const gridRef = useRef<HTMLDivElement | null>(null);
+  const createShare = useMutation({
+    mutationFn: (snapshot: ReturnType<typeof makeSnapshot>) =>
+      api<AvailabilityShareCreated>("/availability-shares", {
+        method: "POST",
+        body: JSON.stringify({
+          snapshot,
+          creator_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
+      }),
+    onSuccess: async (result) => {
+      setShareResult(result);
+      try {
+        await navigator.clipboard.writeText(result.url);
+        setMessage("Share link copied.");
+      } catch {
+        setMessage("Share link created. Use the Copy button below.");
+      }
+    },
+    onError: (error) => setMessage(error instanceof Error ? error.message : "Unable to create share link."),
+  });
 
   useEffect(() => {
     const saved = readSetup();
@@ -218,20 +215,62 @@ export default function AvailabilityPage() {
     setAvailability(initialAvailability(setup, savedState, busy));
   }, [busy, isLoading, savedState, setup]);
 
-  const toggleDate = (date: Date) => {
-    const iso = toDateIso(date);
+  const setDateSelected = (iso: string, selected: boolean) => {
     setSetupDraft((current) => {
-      const selected = new Set(current.selectedDates);
-      if (selected.has(iso)) {
-        selected.delete(iso);
-      } else if (selected.size < MAX_DATES) {
-        selected.add(iso);
+      const selectedDates = new Set(current.selectedDates);
+      if (selectedDates.has(iso) === selected) return current;
+      if (!selected) {
+        selectedDates.delete(iso);
+      } else if (selectedDates.size < MAX_DATES) {
+        selectedDates.add(iso);
+        setMessage("");
       } else {
         setMessage(`Choose ${MAX_DATES} dates or fewer.`);
       }
-      const selectedDates = Array.from(selected).sort();
-      return { ...current, selectedDates };
+      return { ...current, selectedDates: Array.from(selectedDates).sort() };
     });
+  };
+
+  const toggleDate = (iso: string) => {
+    setDateSelected(iso, !setupDraft.selectedDates.includes(iso));
+  };
+
+  const paintDate = (iso: string) => {
+    const dateDrag = dateDragRef.current;
+    if (!dateDrag || dateDrag.visited.has(iso)) return;
+    dateDrag.visited.add(iso);
+    setDateSelected(iso, dateDrag.mark);
+  };
+
+  const handleDatePointerDown = (event: React.PointerEvent<HTMLButtonElement>, iso: string, selected: boolean) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    dateGridRef.current?.setPointerCapture(event.pointerId);
+    dateDragRef.current = { pointerId: event.pointerId, mark: !selected, visited: new Set() };
+    suppressDateClickRef.current = true;
+    paintDate(iso);
+  };
+
+  const handleDatePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dateDragRef.current?.pointerId !== event.pointerId) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-date-iso]");
+    const iso = target?.dataset.dateIso;
+    if (iso && dateGridRef.current?.contains(target)) paintDate(iso);
+  };
+
+  const handleDatePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dateDragRef.current?.pointerId !== event.pointerId) return;
+    dateDragRef.current = null;
+    if (event.type === "pointercancel") {
+      suppressDateClickRef.current = false;
+    } else {
+      window.setTimeout(() => {
+        suppressDateClickRef.current = false;
+      }, 0);
+    }
+    if (dateGridRef.current?.hasPointerCapture(event.pointerId)) {
+      dateGridRef.current.releasePointerCapture(event.pointerId);
+    }
   };
 
   const confirmSetup = () => {
@@ -265,7 +304,7 @@ export default function AvailabilityPage() {
 
   const setSlot = useCallback(
     (dateIso: string, slot: number, mark: boolean) => {
-      if (!setup || busy[dateIso]?.[slot]) return;
+      if (!setup || busy[dateIso]?.includes(slot)) return;
       persistAvailability({
         ...availability,
         [dateIso]: mark
@@ -277,7 +316,7 @@ export default function AvailabilityPage() {
   );
 
   const handlePointerDown = (dateIso: string, slot: number) => {
-    if (!setup || busy[dateIso]?.[slot]) return;
+    if (!setup || busy[dateIso]?.includes(slot)) return;
     const mark = !(availability[dateIso] ?? []).includes(slot);
     setDrag({ mark, last: `${dateIso}:${slot}` });
     setSlot(dateIso, slot, mark);
@@ -315,6 +354,25 @@ export default function AvailabilityPage() {
     setMessage("Availability copied.");
   };
 
+  const shareAvailability = () => {
+    if (!setup) return;
+    setMessage("");
+    setShareResult(null);
+    createShare.mutate(
+      makeSnapshot(setup.selectedDates, setup.startHour, setup.endHour, availability, busy),
+    );
+  };
+
+  const copyShareLink = async () => {
+    if (!shareResult) return;
+    try {
+      await navigator.clipboard.writeText(shareResult.url);
+      setMessage("Share link copied.");
+    } catch {
+      setMessage("Copy was blocked. Select the visible share link instead.");
+    }
+  };
+
   const days = useMemo(() => monthDays(month), [month]);
 
   return (
@@ -323,7 +381,7 @@ export default function AvailabilityPage() {
         <div>
           <h1 className="text-3xl font-black">Availability</h1>
           <p className="mt-1 text-[#667085]">
-            Pick dates and mark your free hours. Timed tasks show as busy blocks.
+            Click or drag to pick dates, then mark your free hours. Timed tasks show as busy blocks.
           </p>
         </div>
         {mode === "grid" ? (
@@ -345,7 +403,13 @@ export default function AvailabilityPage() {
                 <ChevronRight size={18} />
               </button>
             </div>
-            <div className="grid grid-cols-7">
+            <div
+              className="availability-date-grid grid grid-cols-7"
+              onPointerCancel={handleDatePointerEnd}
+              onPointerMove={handleDatePointerMove}
+              onPointerUp={handleDatePointerEnd}
+              ref={dateGridRef}
+            >
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
                 <div className="border-b border-[#dfd7ca] p-3 text-center text-sm font-black text-[#667085]" key={day}>
                   {day}
@@ -361,8 +425,16 @@ export default function AvailabilityPage() {
                     className={`availability-date ${selected ? "availability-date-selected" : ""} ${
                       isToday ? "availability-date-today" : ""
                     } ${inMonth ? "" : "availability-date-muted"}`}
+                    data-date-iso={iso}
                     key={iso}
-                    onClick={() => toggleDate(day)}
+                    onClick={() => {
+                      if (suppressDateClickRef.current) {
+                        suppressDateClickRef.current = false;
+                        return;
+                      }
+                      toggleDate(iso);
+                    }}
+                    onPointerDown={(event) => handleDatePointerDown(event, iso, selected)}
                   >
                     {format(day, "d")}
                   </button>
@@ -415,53 +487,35 @@ export default function AvailabilityPage() {
             <button className="btn btn-secondary" onClick={copySummary}>
               <Copy size={17} /> Copy summary
             </button>
+            <button className="btn btn-secondary" disabled={createShare.isPending} onClick={shareAvailability}>
+              {createShare.isPending ? <Loader2 className="animate-spin" size={17} /> : <Share2 size={17} />}
+              Share link
+            </button>
             <button className="btn btn-secondary" onClick={downloadHtml}>
               <Download size={17} /> Export HTML
             </button>
           </div>
           {message ? <p className="text-sm font-bold text-[#667085]">{message}</p> : null}
-          <div className="availability-grid-shell panel overflow-auto" onPointerLeave={() => setDrag(null)} onPointerUp={() => setDrag(null)} ref={gridRef}>
-            <div
-              className="availability-grid min-w-max"
-              style={{
-                gridTemplateColumns: `64px repeat(${setup.selectedDates.length}, 180px)`,
-              }}
-            >
-              <div className="availability-header" />
-              {setup.selectedDates.map((dateIso) => (
-                <div className="availability-header text-center" key={dateIso}>
-                  <p className="text-xs font-bold text-[#667085]">{format(dateFromIso(dateIso), "EEE")}</p>
-                  <p className="font-black">{format(dateFromIso(dateIso), "MMM d")}</p>
-                </div>
-              ))}
-              {Array.from({ length: setup.endHour - setup.startHour }, (_, slot) => (
-                <div className="contents" key={slot}>
-                  <div className="availability-time">{shortHourLabel(setup.startHour + slot)}</div>
-                  {setup.selectedDates.map((dateIso) => {
-                    const isBusy = Boolean(busy[dateIso]?.[slot]);
-                    const isAvailable = (availability[dateIso] ?? []).includes(slot);
-                    return (
-                      <button
-                        aria-label={`${format(dateFromIso(dateIso), "MMM d")} ${shortHourLabel(setup.startHour + slot)}`}
-                        className={`availability-slot ${isBusy ? "availability-busy" : isAvailable ? "availability-available" : "availability-free"}`}
-                        disabled={isBusy}
-                        key={`${dateIso}-${slot}`}
-                        onPointerDown={() => handlePointerDown(dateIso, slot)}
-                        onPointerEnter={() => handlePointerEnter(dateIso, slot)}
-                        title={isBusy ? "Busy from a timed task" : isAvailable ? "Available" : "Unavailable"}
-                        type="button"
-                      />
-                    );
-                  })}
-                </div>
-              ))}
+          {shareResult ? (
+            <div className="panel flex max-w-3xl flex-wrap items-center gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="break-all text-sm font-bold">{shareResult.url}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">
+                  Expires {new Date(shareResult.expires_at).toLocaleString()}
+                </p>
+              </div>
+              <button className="btn btn-secondary" onClick={copyShareLink}>
+                <Copy size={17} /> Copy
+              </button>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-4 text-sm font-bold text-[#667085]">
-            <span className="availability-legend availability-legend-free">Unavailable</span>
-            <span className="availability-legend availability-legend-available">Available</span>
-            <span className="availability-legend availability-legend-busy">Busy task</span>
-          </div>
+          ) : null}
+          <AvailabilityGrid
+            onPointerDown={handlePointerDown}
+            onPointerEnd={() => setDrag(null)}
+            onPointerEnter={handlePointerEnter}
+            snapshot={makeSnapshot(setup.selectedDates, setup.startHour, setup.endHour, availability, busy)}
+          />
+          <AvailabilityLegend />
         </div>
       ) : null}
     </section>

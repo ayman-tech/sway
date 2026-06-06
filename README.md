@@ -116,7 +116,7 @@ the CTA goes to `/auth`, and successful auth redirects to `/dashboard`.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. **SQL Editor** → run [`supabase/schema.sql`](supabase/schema.sql) (creates the task, settings,
-   and Google integration tables + RLS).
+   Google integration, and expiring availability-share tables + RLS).
 3. **Authentication → Sign In / Providers → Email** → turn **off** "Confirm email".
 4. **Database → triggers** (or SQL Editor) → add a server-timestamp trigger so sync ordering uses
    the server clock:
@@ -135,9 +135,16 @@ the CTA goes to `/auth`, and successful auth redirects to `/dashboard`.
    SUPABASE_SERVICE_ROLE_KEY=...
    NEXT_PUBLIC_SUPABASE_URL=https://YOURPROJECT.supabase.co
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   API_PUBLIC_URL=http://localhost:8000
+   WEB_PUBLIC_URL=http://localhost:3000
    ```
+   The API service-role key is required for Google integration storage and public availability
+   share links. `API_PUBLIC_URL` tells clients where to call FastAPI; `WEB_PUBLIC_URL` tells
+   FastAPI which website address to place in returned share links. Never expose the service-role
+   key through a `NEXT_PUBLIC_...` variable.
    (Credentials are also read from `~/Library/Application Support/Sway/supabase.json`, which is what
-   the packaged app uses since it can't see local `.env` files.)
+   the packaged app uses since it can't see local `.env` files. Add an `api_url` field there to
+   enable desktop share links.)
 
 Restart the app → you'll get a login screen to create an account, and tasks sync across devices.
 
@@ -164,8 +171,8 @@ code-sign + notarize it with an Apple Developer ID (it runs locally without that
 
 ## Configuration & data
 
-- **Config:** `.env` (or env vars `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`); Google credentials
-  saved via the in-app dialog.
+- **Config:** `.env` (or env vars `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
+  `API_PUBLIC_URL`); Google credentials saved via the in-app dialog.
 - **Data dir:** `~/Library/Application Support/Sway/` — `sway.db`, `supabase.json`, `google.json`,
   and `logs/sway.log`. Override with `SWAY_DATA_DIR` (used by tests).
 

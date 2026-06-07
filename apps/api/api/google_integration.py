@@ -195,7 +195,8 @@ def sync_google(user: CurrentUser) -> int:
                         or existing.description != task.description
                         or existing.due_at != task.due_at
                         or existing.end_at != task.end_at
-                        or existing.has_time != task.has_time
+                        or existing.due_date != task.due_date
+                        or existing.end_date != task.end_date
                     ):
                         store.upsert(task)
                         changed += 1

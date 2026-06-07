@@ -6,11 +6,13 @@ export type Task = {
   priority: number;
   status: "pending" | "completed";
   due_at: string | null;
-  has_time: boolean;
+  due_date: string | null;
   start_at: string | null;
   end_at: string | null;
+  end_date: string | null;
   reminder_minutes_before: number | null;
   recurrence_rule: string | null;
+  recurrence_timezone: string | null;
   recurrence_parent_id: string | null;
   google_event_id: string | null;
   source: "sway" | "google";

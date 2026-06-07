@@ -291,10 +291,12 @@ class MainWindow(QWidget):
                     v["title"],
                     description=v["description"],
                     due_at=v["due_at"],
-                    has_time=v["has_time"],
+                    due_date=v["due_date"],
                     end_at=v["end_at"],
+                    end_date=v["end_date"],
                     reminder_minutes_before=v["reminder_minutes_before"],
                     recurrence_rule=v["recurrence_rule"],
+                    recurrence_timezone=v["recurrence_timezone"],
                 )
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save", str(exc))
@@ -319,10 +321,12 @@ class MainWindow(QWidget):
                         title=v["title"],
                         description=v["description"],
                         due_at=v["due_at"],
-                        has_time=v["has_time"],
+                        due_date=v["due_date"],
                         end_at=v["end_at"],
+                        end_date=v["end_date"],
                         reminder_minutes_before=v["reminder_minutes_before"],
                         recurrence_rule=v["recurrence_rule"],
+                        recurrence_timezone=v["recurrence_timezone"],
                     )
             except ValueError as exc:
                 QMessageBox.warning(self, "Could not save", str(exc))

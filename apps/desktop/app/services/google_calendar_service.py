@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -84,18 +84,17 @@ def _build_description(event: dict) -> str | None:
     return "\n\n".join(sections) or None
 
 
-def _parse_when(event: dict) -> tuple[datetime, bool, datetime | None] | None:
-    """Return (due_at, has_time, end_at) from an event's start/end, or None."""
+def _parse_when(event: dict) -> tuple[datetime | None, date | None, datetime | None, date | None] | None:
+    """Return timestamp or date-only scheduling fields from a Google event."""
     start, end = event.get("start", {}), event.get("end", {})
     if "dateTime" in start:
         due_at = from_iso(start["dateTime"])
         end_at = from_iso(end["dateTime"]) if end.get("dateTime") else None
-        return due_at, True, end_at
+        return due_at, None, end_at, None
     if "date" in start:
-        # All-day: anchor at local midnight so the calendar date doesn't drift.
-        year, month, day = (int(p) for p in start["date"].split("-"))
-        due_at = datetime(year, month, day).astimezone().astimezone(timezone.utc)
-        return due_at, False, None
+        due_date = date.fromisoformat(start["date"])
+        end_date = date.fromisoformat(end["date"]) if end.get("date") else due_date + timedelta(days=1)
+        return None, due_date, None, end_date
     return None
 
 
@@ -248,11 +247,9 @@ class GoogleCalendarService:
         when = _parse_when(event)
         if when is None:
             return False
-        due_at, has_time, end_at = when
+        due_at, due_date, end_at, end_date = when
         title = event.get("summary") or "(No title)"
         description = _build_description(event)
-        end_at = end_at if has_time else None
-
         # Skip if nothing meaningful changed (avoids re-pushing on full syncs).
         if (
             existing is not None
@@ -261,7 +258,8 @@ class GoogleCalendarService:
             and existing.description == description
             and existing.due_at == due_at
             and existing.end_at == end_at
-            and existing.has_time == has_time
+            and existing.due_date == due_date
+            and existing.end_date == end_date
         ):
             return False
 
@@ -270,13 +268,14 @@ class GoogleCalendarService:
             title=title,
             description=description,
             due_at=due_at,
-            has_time=has_time,
+            due_date=due_date,
             end_at=end_at,
+            end_date=end_date,
             source=Source.GOOGLE,
             google_event_id=event_id,
             status=TaskStatus.PENDING,
             # Preserve the user's locally-added reminder across calendar changes.
-            reminder_minutes_before=existing.reminder_minutes_before if existing else None,
+            reminder_minutes_before=existing.reminder_minutes_before if existing and due_at is not None else None,
             created_at=existing.created_at if existing else utc_now(),
         )
         task_repo.upsert(task)
@@ -289,8 +288,9 @@ class GoogleCalendarService:
         """
         cutoff = utc_now() - timedelta(days=1)
         for task in task_repo.list_all():
-            if task.source != Source.GOOGLE or task.due_at is None or task.is_completed:
+            if task.source != Source.GOOGLE or not task.is_dated or task.is_completed:
                 continue
-            effective_end = task.end_at or task.due_at
-            if effective_end < cutoff:
+            timed_past = task.due_at is not None and (task.end_at or task.due_at) < cutoff
+            dated_past = task.due_date is not None and (task.end_date or task.due_date) < cutoff.astimezone().date()
+            if timed_past or dated_past:
                 task_repo.upsert(task.touched(deleted_at=utc_now()))

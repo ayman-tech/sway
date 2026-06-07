@@ -148,7 +148,7 @@ def compute_busy(setup: AvailSetup, task_service: TaskService) -> BusyMap:
     )
     busy: BusyMap = {}
     for task in task_service.get_tasks_in_range(start_utc, end_utc):
-        if not (task.due_at and task.has_time):
+        if task.due_at is None:
             continue
         start_local = to_local(task.due_at)
         end_local = to_local(task.end_at) if task.end_at else start_local + timedelta(hours=1)

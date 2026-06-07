@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import date, datetime
 
 from sway_core.constants import Priority, Source, SyncStatus, TaskStatus
 from sway_core.datetime_utils import utc_now
@@ -20,11 +20,13 @@ class Task:
     status: str = TaskStatus.PENDING
 
     due_at: datetime | None = None
-    has_time: bool = False
+    due_date: date | None = None
     start_at: datetime | None = None
     end_at: datetime | None = None
+    end_date: date | None = None
     reminder_minutes_before: int | None = None
     recurrence_rule: str | None = None
+    recurrence_timezone: str | None = None
     recurrence_parent_id: str | None = None
 
     cloud_id: str | None = None
@@ -43,6 +45,18 @@ class Task:
     @property
     def is_recurring(self) -> bool:
         return bool(self.recurrence_rule)
+
+    @property
+    def is_timed(self) -> bool:
+        return self.due_at is not None
+
+    @property
+    def is_all_day(self) -> bool:
+        return self.due_date is not None
+
+    @property
+    def is_dated(self) -> bool:
+        return self.is_timed or self.is_all_day
 
     @property
     def is_completed(self) -> bool:

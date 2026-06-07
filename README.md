@@ -168,6 +168,9 @@ code-sign + notarize it with an Apple Developer ID (it runs locally without that
   saved via the in-app dialog.
 - **Data dir:** `~/Library/Application Support/Sway/` — `sway.db`, `supabase.json`, `google.json`,
   and `logs/sway.log`. Override with `SWAY_DATA_DIR` (used by tests).
+- **Date-model reset:** upgrading from the legacy `has_time` schema automatically resets
+  local SQLite task rows. Run `supabase/reset_tasks_date_model.sql`, then rerun
+  `supabase/schema.sql`, and sync Google Calendar to repopulate imported events.
 
 ## Notes & limitations
 

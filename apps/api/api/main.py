@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +22,7 @@ from api.schemas import (
     GoogleStatusOut,
     GoogleSyncOut,
     MeOut,
+    ReminderBatchOut,
     ReminderOut,
     SettingsOut,
     SettingsUpdate,
@@ -105,10 +106,10 @@ def post_skip(task_id: str, user: CurrentUser = Depends(get_current_user)) -> No
 
 
 @app.get("/tasks/groups", response_model=list[TaskGroupOut])
-def get_groups(user: CurrentUser = Depends(get_current_user)) -> list[TaskGroupOut]:
+def get_groups(timezone_name: str = "UTC", user: CurrentUser = Depends(get_current_user)) -> list[TaskGroupOut]:
     return [
         TaskGroupOut(label=group.label, overdue=group.overdue, tasks=[task_out(t) for t in group.tasks])
-        for group in groups_for(user)
+        for group in groups_for(user, timezone_name)
     ]
 
 
@@ -121,8 +122,14 @@ def get_completed(user: CurrentUser = Depends(get_current_user)) -> list[TaskGro
 
 
 @app.get("/tasks/calendar", response_model=list[TaskOut])
-def get_calendar(start: datetime, end: datetime, user: CurrentUser = Depends(get_current_user)) -> list[TaskOut]:
-    return [task_out(task) for task in calendar_for(user, start, end)]
+def get_calendar(
+    start: datetime,
+    end: datetime,
+    start_date: date,
+    end_date: date,
+    user: CurrentUser = Depends(get_current_user),
+) -> list[TaskOut]:
+    return [task_out(task) for task in calendar_for(user, start, end, start_date, end_date)]
 
 
 @app.get("/settings", response_model=SettingsOut)
@@ -135,23 +142,27 @@ def patch_settings(payload: SettingsUpdate, user: CurrentUser = Depends(get_curr
     return update_user_settings(user, payload)
 
 
-@app.get("/reminders/due", response_model=list[ReminderOut])
-def due_reminders(since: str | None = None, user: CurrentUser = Depends(get_current_user)) -> list[ReminderOut]:
-    start = from_iso(since) or (utc_now() - timedelta(minutes=1))
-    end = utc_now() + timedelta(days=1)
+@app.get("/reminders/due", response_model=ReminderBatchOut)
+def due_reminders(since: str | None = None, user: CurrentUser = Depends(get_current_user)) -> ReminderBatchOut:
+    processed_through = utc_now()
+    start = from_iso(since) or (processed_through - timedelta(minutes=1))
+    end = processed_through + timedelta(days=1)
     events = [
         event for event in reminder_events_between(TaskStore(user).list_active(), start, end)
-        if start < event.fire_at <= utc_now()
+        if start < event.fire_at <= processed_through
     ]
-    return [
-        ReminderOut(
-            fire_at=event.fire_at,
-            occurrence=event.occurrence,
-            kind=event.kind,
-            task=task_out(event.task),
-        )
-        for event in sorted(events, key=lambda e: e.fire_at)
-    ]
+    return ReminderBatchOut(
+        processed_through=processed_through,
+        reminders=[
+            ReminderOut(
+                fire_at=event.fire_at,
+                occurrence=event.occurrence,
+                kind=event.kind,
+                task=task_out(event.task),
+            )
+            for event in sorted(events, key=lambda e: e.fire_at)
+        ],
+    )
 
 
 @app.get("/integrations/google/status", response_model=GoogleStatusOut)

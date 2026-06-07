@@ -7,10 +7,11 @@ type Payload = {
   title: string;
   description?: string | null;
   due_at?: string | null;
-  has_time?: boolean;
+  due_date?: string | null;
   end_at?: string | null;
   reminder_minutes_before?: number | null;
   recurrence_rule?: string | null;
+  recurrence_timezone?: string | null;
 };
 
 export function TaskForm({ onCreate }: { onCreate: (payload: Payload) => Promise<unknown> }) {
@@ -25,14 +26,15 @@ export function TaskForm({ onCreate }: { onCreate: (payload: Payload) => Promise
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setSaving(true);
-    const dueAt = date ? new Date(`${date}T${time || "00:00"}`).toISOString() : null;
+    const dueAt = date && time ? new Date(`${date}T${time}`).toISOString() : null;
     await onCreate({
       title,
       description: description || null,
       due_at: dueAt,
-      has_time: Boolean(date && time),
+      due_date: date && !time ? date : null,
       reminder_minutes_before: reminder ? Number(reminder) : null,
       recurrence_rule: repeat || null,
+      recurrence_timezone: repeat && time ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" : null,
     });
     setSaving(false);
     setTitle("");

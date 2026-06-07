@@ -28,6 +28,14 @@ class Database:
         self._init_schema()
 
     def _init_schema(self) -> None:
+        columns = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(tasks)").fetchall()
+        }
+        if columns and "due_date" not in columns:
+            # The date-only scheduling redesign intentionally resets legacy task rows.
+            # Settings and OAuth credentials live outside this table and are preserved.
+            self._conn.execute("DROP TABLE tasks")
         self._conn.executescript(_SCHEMA_FILE.read_text())
         self._conn.commit()
 

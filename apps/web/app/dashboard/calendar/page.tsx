@@ -1,6 +1,6 @@
 "use client";
 
-import { addMonths, endOfMonth, endOfWeek, format, isSameDay, startOfMonth, startOfWeek, subMonths } from "date-fns";
+import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameDay, startOfMonth, startOfWeek, subMonths } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -9,8 +9,8 @@ import type { Task } from "@/lib/types";
 import { LinkedText } from "@/components/linked-text";
 
 function compareCalendarTasks(a: Task, b: Task) {
-  if (a.has_time !== b.has_time) return a.has_time ? -1 : 1;
-  if (a.has_time && b.has_time) {
+  if (Boolean(a.due_at) !== Boolean(b.due_at)) return a.due_at ? -1 : 1;
+  if (a.due_at && b.due_at) {
     return new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime();
   }
   return a.title.localeCompare(b.title);
@@ -27,7 +27,12 @@ export default function CalendarPage() {
   }, [month]);
   const { data } = useQuery({
     queryKey: ["calendar", range.start.toISOString(), range.end.toISOString()],
-    queryFn: () => api<Task[]>(`/tasks/calendar?start=${encodeURIComponent(range.start.toISOString())}&end=${encodeURIComponent(range.end.toISOString())}`),
+    queryFn: () => api<Task[]>(
+      `/tasks/calendar?start=${encodeURIComponent(range.start.toISOString())}` +
+      `&end=${encodeURIComponent(range.end.toISOString())}` +
+      `&start_date=${format(range.start, "yyyy-MM-dd")}` +
+      `&end_date=${format(addDays(range.end, 1), "yyyy-MM-dd")}`,
+    ),
   });
   const days = useMemo(() => {
     const result: Date[] = [];
@@ -38,10 +43,16 @@ export default function CalendarPage() {
     }
     return result;
   }, [range]);
-  const tasksFor = (day: Date) =>
+  const tasksFor = (day: Date) => {
+    const dayIso = format(day, "yyyy-MM-dd");
+    return (
     (data ?? [])
-      .filter((task) => task.due_at && isSameDay(new Date(task.due_at), day))
-      .sort(compareCalendarTasks);
+      .filter((task) => task.due_at
+        ? isSameDay(new Date(task.due_at), day)
+        : Boolean(task.due_date && task.due_date <= dayIso && (task.end_date ? task.end_date > dayIso : task.due_date === dayIso)))
+      .sort(compareCalendarTasks)
+    );
+  };
   const selectedTasks = tasksFor(selected);
 
   return (
@@ -84,7 +95,7 @@ export default function CalendarPage() {
                   {tasks.slice(0, 3).map((task) => (
                     <p
                       className="truncate rounded bg-[#f2f4f7] px-2 py-1 text-xs font-bold"
-                      key={`${task.id}-${task.due_at}`}
+                      key={`${task.id}-${task.due_at ?? task.due_date}`}
                     >
                       {task.title}
                     </p>
@@ -100,7 +111,7 @@ export default function CalendarPage() {
         <div className="mt-4 space-y-3">
           {selectedTasks.length ? (
             selectedTasks.map((task) => (
-              <div className="min-w-0 rounded-lg border border-[#e6ded2] bg-white p-3" key={`${task.id}-${task.due_at}`}>
+              <div className="min-w-0 rounded-lg border border-[#e6ded2] bg-white p-3" key={`${task.id}-${task.due_at ?? task.due_date}`}>
                 <p className="break-words font-black">{task.title}</p>
                 {task.description ? (
                   <p className="mt-1 min-w-0 whitespace-pre-wrap break-words text-sm text-[#667085] [overflow-wrap:anywhere]">
@@ -108,7 +119,7 @@ export default function CalendarPage() {
                   </p>
                 ) : null}
                 <p className="mt-1 text-sm text-[#667085]">
-                  {task.due_at && task.has_time ? new Date(task.due_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "All day"}
+                  {task.due_at ? new Date(task.due_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "All day"}
                 </p>
               </div>
             ))

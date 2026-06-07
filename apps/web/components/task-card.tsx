@@ -5,10 +5,15 @@ import type { Task } from "@/lib/types";
 import { LinkedText } from "@/components/linked-text";
 
 function taskTime(task: Task) {
-  if (!task.due_at) return "Untimed";
-  const due = new Date(task.due_at);
-  if (!task.has_time) return due.toLocaleDateString();
-  return due.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  if (task.due_at) return new Date(task.due_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  if (task.due_date) {
+    const start = new Date(`${task.due_date}T00:00:00`);
+    if (!task.end_date || task.end_date === task.due_date) return start.toLocaleDateString();
+    const inclusiveEnd = new Date(`${task.end_date}T00:00:00`);
+    inclusiveEnd.setDate(inclusiveEnd.getDate() - 1);
+    return `${start.toLocaleDateString()} - ${inclusiveEnd.toLocaleDateString()}`;
+  }
+  return "Untimed";
 }
 
 export function TaskCard({

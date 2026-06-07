@@ -14,12 +14,14 @@ create table if not exists public.tasks (
     status text not null default 'pending',
 
     due_at timestamptz,
-    has_time boolean not null default false,
+    due_date date,
     start_at timestamptz,
     end_at timestamptz,
+    end_date date,
 
     reminder_minutes_before int,
     recurrence_rule text,
+    recurrence_timezone text,
     recurrence_parent_id text,
 
     google_event_id text,
@@ -28,10 +30,16 @@ create table if not exists public.tasks (
     completed_at timestamptz,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    deleted_at timestamptz
+    deleted_at timestamptz,
+
+    constraint tasks_one_due_kind check (not (due_at is not null and due_date is not null)),
+    constraint tasks_timed_end_requires_due check (end_at is null or (due_at is not null and end_at > due_at)),
+    constraint tasks_date_end_requires_due check (end_date is null or (due_date is not null and end_date > due_date))
 );
 
 create index if not exists idx_tasks_user_updated on public.tasks (user_id, updated_at);
+create index if not exists idx_tasks_user_due_at on public.tasks (user_id, due_at);
+create index if not exists idx_tasks_user_due_date on public.tasks (user_id, due_date);
 
 alter table public.tasks enable row level security;
 

@@ -20,7 +20,7 @@ class ReminderEvent:
 def reminder_events_between(tasks: list[Task], start: datetime, end: datetime) -> list[ReminderEvent]:
     events: list[ReminderEvent] = []
     for task in tasks:
-        if not (task.due_at and task.has_time):
+        if task.due_at is None:
             continue
         is_google = task.is_read_only
         if is_google and task.reminder_minutes_before is None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 
@@ -33,11 +33,13 @@ def task_to_row(task: Task, user_id: str) -> dict:
         "priority": int(task.priority),
         "status": str(task.status),
         "due_at": to_iso(task.due_at),
-        "has_time": bool(task.has_time),
+        "due_date": task.due_date.isoformat() if task.due_date else None,
         "start_at": to_iso(task.start_at),
         "end_at": to_iso(task.end_at),
+        "end_date": task.end_date.isoformat() if task.end_date else None,
         "reminder_minutes_before": task.reminder_minutes_before,
         "recurrence_rule": task.recurrence_rule,
+        "recurrence_timezone": task.recurrence_timezone,
         "recurrence_parent_id": task.recurrence_parent_id,
         "google_event_id": task.google_event_id,
         "source": str(task.source),
@@ -59,11 +61,13 @@ def task_from_row(row: dict) -> Task:
         priority=row.get("priority") or 0,
         status=row.get("status") or "pending",
         due_at=from_iso(row.get("due_at")),
-        has_time=bool(row.get("has_time")),
+        due_date=date.fromisoformat(row["due_date"]) if row.get("due_date") else None,
         start_at=from_iso(row.get("start_at")),
         end_at=from_iso(row.get("end_at")),
+        end_date=date.fromisoformat(row["end_date"]) if row.get("end_date") else None,
         reminder_minutes_before=row.get("reminder_minutes_before"),
         recurrence_rule=row.get("recurrence_rule"),
+        recurrence_timezone=row.get("recurrence_timezone"),
         recurrence_parent_id=row.get("recurrence_parent_id"),
         google_event_id=row.get("google_event_id"),
         source=row.get("source") or "sway",
@@ -138,17 +142,26 @@ def update_task(user: CurrentUser, task_id: str, payload: TaskUpdate) -> Task:
         allowed = {"reminder_minutes_before"}
         if any(key not in allowed for key in data):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Google Calendar tasks are read-only.")
-        return store.upsert(existing.touched(reminder_minutes_before=data.get("reminder_minutes_before")))
+        reminder = data.get("reminder_minutes_before") if existing.due_at is not None else None
+        return store.upsert(existing.touched(reminder_minutes_before=reminder))
+    due_at = data.get("due_at", existing.due_at)
+    due_date = data.get("due_date", existing.due_date)
+    if "due_at" in data and data["due_at"] is not None and "due_date" not in data:
+        due_date = None
+    if "due_date" in data and data["due_date"] is not None and "due_at" not in data:
+        due_at = None
     merged = {
         "title": data.get("title", existing.title),
         "description": data.get("description", existing.description),
-        "due_at": data.get("due_at", existing.due_at),
-        "has_time": data.get("has_time", existing.has_time),
+        "due_at": due_at,
+        "due_date": due_date,
         "end_at": data.get("end_at", existing.end_at),
+        "end_date": data.get("end_date", existing.end_date),
         "reminder_minutes_before": data.get(
             "reminder_minutes_before", existing.reminder_minutes_before
         ),
         "recurrence_rule": data.get("recurrence_rule", existing.recurrence_rule),
+        "recurrence_timezone": data.get("recurrence_timezone", existing.recurrence_timezone),
     }
     try:
         return store.upsert(build_updated_task(existing, **merged))
@@ -159,7 +172,7 @@ def update_task(user: CurrentUser, task_id: str, payload: TaskUpdate) -> Task:
 def complete_task(user: CurrentUser, task_id: str) -> Task:
     store = TaskStore(user)
     task = store.get(task_id)
-    if task.is_recurring and task.due_at is not None:
+    if task.is_recurring and task.is_dated:
         done = store.upsert(completed_occurrence(task))
         store.upsert(advanced_series(task))
         return done
@@ -181,14 +194,14 @@ def delete_task(user: CurrentUser, task_id: str) -> None:
 def skip_occurrence(user: CurrentUser, task_id: str) -> None:
     store = TaskStore(user)
     task = store.get(task_id)
-    if task.is_recurring and task.due_at is not None:
+    if task.is_recurring and task.is_dated:
         store.upsert(advanced_series(task))
     else:
         store.upsert(task.touched(deleted_at=utc_now()))
 
 
-def groups_for(user: CurrentUser):
-    return active_groups(TaskStore(user).list_active())
+def groups_for(user: CurrentUser, timezone_name: str = "UTC"):
+    return active_groups(TaskStore(user).list_active(), timezone_name)
 
 
 def completed_for(user: CurrentUser):
@@ -198,5 +211,5 @@ def completed_for(user: CurrentUser):
     return completed_groups(store.list_completed(since))
 
 
-def calendar_for(user: CurrentUser, start: datetime, end: datetime) -> list[Task]:
-    return tasks_in_range(TaskStore(user).list_active(), start, end)
+def calendar_for(user: CurrentUser, start: datetime, end: datetime, start_date: date, end_date: date) -> list[Task]:
+    return tasks_in_range(TaskStore(user).list_active(), start, end, start_date, end_date)

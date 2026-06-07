@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -99,7 +101,7 @@ class TaskCard(QFrame):
 
     def _time_text(self) -> str:
         """Just the time range (no date) for the calendar day list. Empty if untimed."""
-        if not (self._task.due_at and self._task.has_time):
+        if self._task.due_at is None:
             return ""
         text = self._fmt_time(self._task.due_at)
         if self._task.end_at is not None:
@@ -110,24 +112,23 @@ class TaskCard(QFrame):
         parts: list[str] = []
         if self._task.due_at:
             local = to_local(self._task.due_at)
-            if self._task.has_time:
-                text = local.strftime("%a %d %b, %I:%M %p").replace(" 0", " ")
-                if self._task.end_at is not None:
-                    end_local = to_local(self._task.end_at)
-                    text += " – " + end_local.strftime("%I:%M %p").replace(" 0", " ").lstrip("0")
-                parts.append(text)
+            text = local.strftime("%a %d %b, %I:%M %p").replace(" 0", " ")
+            if self._task.end_at is not None:
+                end_local = to_local(self._task.end_at)
+                text += " – " + end_local.strftime("%I:%M %p").replace(" 0", " ").lstrip("0")
+            parts.append(text)
+            if self._task.is_read_only:
+                if self._task.reminder_minutes_before is not None:
+                    parts.append("⏰")
             else:
-                parts.append(local.strftime("%a %d %b"))
-            if self._task.has_time:
-                if self._task.is_read_only:
-                    # Google events only remind if the user added one.
-                    if self._task.reminder_minutes_before is not None:
-                        parts.append("⏰")
-                else:
-                    # Timed tasks always remind at the task time; "+1" marks an extra reminder.
-                    parts.append(
-                        "⏰+1" if self._task.reminder_minutes_before is not None else "⏰"
-                    )
+                parts.append("⏰+1" if self._task.reminder_minutes_before is not None else "⏰")
+        elif self._task.due_date:
+            text = self._task.due_date.strftime("%a %d %b")
+            if self._task.end_date:
+                inclusive_end = self._task.end_date - timedelta(days=1)
+                if inclusive_end != self._task.due_date:
+                    text += " – " + inclusive_end.strftime("%a %d %b")
+            parts.append(text)
         if self._task.is_recurring:
             parts.append("⟳")
         return "   ·   ".join(parts)

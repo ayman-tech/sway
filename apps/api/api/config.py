@@ -37,7 +37,7 @@ class Settings:
     google_redirect_uri: str
 
 
-def _normalize_supabase_url(url: str) -> str:
+def _normalize_public_url(url: str) -> str:
     cleaned = url.strip().strip("'\"")
     parsed = urlparse(cleaned)
     if parsed.scheme and parsed.netloc:
@@ -56,10 +56,10 @@ def get_settings() -> Settings:
     if not (url and key):
         raise RuntimeError("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are required.")
 
-    api_url = os.environ.get("API_PUBLIC_URL", "http://localhost:8000")
-    web_url = os.environ.get("WEB_PUBLIC_URL", "http://localhost:3000")
+    api_url = _normalize_public_url(os.environ.get("API_PUBLIC_URL", "http://localhost:8000"))
+    web_url = _normalize_public_url(os.environ.get("WEB_PUBLIC_URL", "http://localhost:3000"))
     return Settings(
-        supabase_url=_normalize_supabase_url(url),
+        supabase_url=_normalize_public_url(url),
         supabase_key=key,
         supabase_service_role_key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY"),
         api_public_url=api_url,

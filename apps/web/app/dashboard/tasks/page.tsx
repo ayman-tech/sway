@@ -12,7 +12,7 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ["task-groups"],
-    queryFn: () => api<TaskGroup[]>("/tasks/groups"),
+    queryFn: () => api<TaskGroup[]>(`/tasks/groups?timezone_name=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")}`),
   });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["task-groups"] });
@@ -48,7 +48,7 @@ export default function TasksPage() {
             <div className="space-y-3">
               {group.tasks.map((task) => (
                 <TaskCard
-                  key={`${task.id}-${task.due_at ?? ""}-${task.is_preview}`}
+                  key={`${task.id}-${task.due_at ?? task.due_date ?? ""}-${task.is_preview}`}
                   onComplete={(t) => complete.mutateAsync(t)}
                   onDelete={(t) => remove.mutateAsync(t)}
                   onOpen={setEditing}

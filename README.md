@@ -137,11 +137,13 @@ the CTA goes to `/auth`, and successful auth redirects to `/dashboard`.
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    API_PUBLIC_URL=http://localhost:8000
    WEB_PUBLIC_URL=http://localhost:3000
+   NEXT_PUBLIC_API_URL=http://localhost:8000
    ```
    The API service-role key is required for Google integration storage and public availability
-   share links. `API_PUBLIC_URL` tells clients where to call FastAPI; `WEB_PUBLIC_URL` tells
-   FastAPI which website address to place in returned share links. Never expose the service-role
-   key through a `NEXT_PUBLIC_...` variable.
+   share links. `API_PUBLIC_URL` is FastAPI's public server URL and is also used by the desktop
+   client; `NEXT_PUBLIC_API_URL` tells the browser where to call FastAPI; `WEB_PUBLIC_URL` tells
+   FastAPI which website origin to allow and place in returned share links. Never expose the
+   service-role key through a `NEXT_PUBLIC_...` variable.
    (Credentials are also read from `~/Library/Application Support/Sway/supabase.json`, which is what
    the packaged app uses since it can't see local `.env` files. Add an `api_url` field there to
    enable desktop share links.)
@@ -175,6 +177,9 @@ code-sign + notarize it with an Apple Developer ID (it runs locally without that
   `API_PUBLIC_URL`); Google credentials saved via the in-app dialog.
 - **Data dir:** `~/Library/Application Support/Sway/` — `sway.db`, `supabase.json`, `google.json`,
   and `logs/sway.log`. Override with `SWAY_DATA_DIR` (used by tests).
+- **Date-model reset:** upgrading from the legacy `has_time` schema automatically resets
+  local SQLite task rows. Run `supabase/reset_tasks_date_model.sql`, then rerun
+  `supabase/schema.sql`, and sync Google Calendar to repopulate imported events.
 
 ## Notes & limitations
 

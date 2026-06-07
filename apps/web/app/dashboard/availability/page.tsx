@@ -91,7 +91,7 @@ function computeBusy(tasks: Task[], setup: AvailabilitySetup): BusyMap {
   const dateSet = new Set(setup.selectedDates);
   const busy: BusyMap = {};
   for (const task of tasks) {
-    if (!task.due_at || !task.has_time) continue;
+    if (!task.due_at) continue;
     const start = parseISO(task.due_at);
     const end = task.end_at ? parseISO(task.end_at) : new Date(start.getTime() + 60 * 60 * 1000);
     const dateIso = toDateIso(start);
@@ -205,7 +205,9 @@ export default function AvailabilityPage() {
     queryKey: ["availability-calendar", range?.start.toISOString(), range?.end.toISOString()],
     queryFn: () =>
       api<Task[]>(
-        `/tasks/calendar?start=${encodeURIComponent(range!.start.toISOString())}&end=${encodeURIComponent(range!.end.toISOString())}`,
+        `/tasks/calendar?start=${encodeURIComponent(range!.start.toISOString())}` +
+        `&end=${encodeURIComponent(range!.end.toISOString())}` +
+        `&start_date=${toDateIso(range!.start)}&end_date=${toDateIso(range!.end)}`,
       ),
   });
   const busy = useMemo(() => (setup ? computeBusy(tasks, setup) : {}), [tasks, setup]);

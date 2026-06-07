@@ -47,7 +47,7 @@ def _generate_token() -> str:
 def _is_token_collision(exc: APIError) -> bool:
     raw_error = getattr(exc, "_raw_error", {})
     detail = raw_error if isinstance(raw_error, dict) else {}
-    code = getattr(exc, "code", None) or detail.get("code")
+    code = _api_error_code(exc)
     text = " ".join(
         str(value)
         for value in (
@@ -59,6 +59,17 @@ def _is_token_collision(exc: APIError) -> bool:
         if value
     ).lower()
     return code == "23505" and "token_hash" in text
+
+
+def _api_error_code(exc: APIError) -> str | None:
+    raw_error = getattr(exc, "_raw_error", {})
+    detail = raw_error if isinstance(raw_error, dict) else {}
+    arg_detail = exc.args[0] if exc.args and isinstance(exc.args[0], dict) else {}
+    return getattr(exc, "code", None) or detail.get("code") or arg_detail.get("code")
+
+
+def _is_missing_table(exc: APIError) -> bool:
+    return _api_error_code(exc) == "PGRST205"
 
 
 def _valid_token(token: str) -> bool:
@@ -147,7 +158,9 @@ def create_share(user: CurrentUser, payload: AvailabilityShareCreate) -> Availab
         if stale_ids:
             _table().delete().in_("id", stale_ids).execute()
     except APIError as exc:
-        raise _service_unavailable(exc) from exc
+        if _is_missing_table(exc):
+            raise _service_unavailable(exc) from exc
+        raise
     url = f"{get_settings().web_public_url.rstrip('/')}/availability/share/{token}"
     return AvailabilityShareCreatedOut(url=url, expires_at=expires_at)
 
@@ -167,7 +180,9 @@ def get_share(token: str) -> AvailabilityShareOut:
             .execute()
         )
     except APIError as exc:
-        raise _service_unavailable(exc) from exc
+        if _is_missing_table(exc):
+            raise _service_unavailable(exc) from exc
+        raise
     if not result.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Availability share not found or expired.")
     row = result.data[0]

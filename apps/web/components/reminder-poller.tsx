@@ -11,22 +11,28 @@ type Reminder = {
   task: Task;
 };
 
+type ReminderBatch = {
+  processed_through: string;
+  reminders: Reminder[];
+};
+
 export function ReminderPoller() {
-  const processed = useRef(new Date().toISOString());
+  const processed = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     const check = async () => {
       try {
-        const reminders = await api<Reminder[]>(`/reminders/due?since=${encodeURIComponent(processed.current)}`);
-        processed.current = new Date().toISOString();
-        for (const reminder of reminders) {
+        const query = processed.current ? `?since=${encodeURIComponent(processed.current)}` : "";
+        const batch = await api<ReminderBatch>(`/reminders/due${query}`);
+        for (const reminder of batch.reminders) {
           const title = reminder.task.title;
           const body = reminder.kind === "due" ? "Due now" : "Upcoming";
           if ("Notification" in window && Notification.permission === "granted") {
             new Notification(title, { body });
           }
         }
+        processed.current = batch.processed_through;
       } catch {
         // Auth redirects and network state are handled by the dashboard shell/query errors.
       }

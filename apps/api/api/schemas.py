@@ -15,11 +15,13 @@ class TaskOut(BaseModel):
     priority: int = 0
     status: str = "pending"
     due_at: datetime | None = None
-    has_time: bool = False
+    due_date: date | None = None
     start_at: datetime | None = None
     end_at: datetime | None = None
+    end_date: date | None = None
     reminder_minutes_before: int | None = None
     recurrence_rule: str | None = None
+    recurrence_timezone: str | None = None
     recurrence_parent_id: str | None = None
     google_event_id: str | None = None
     source: str = "sway"
@@ -34,10 +36,12 @@ class TaskCreate(BaseModel):
     title: str
     description: str | None = None
     due_at: datetime | None = None
-    has_time: bool = False
+    due_date: date | None = None
     end_at: datetime | None = None
+    end_date: date | None = None
     reminder_minutes_before: int | None = None
     recurrence_rule: str | None = None
+    recurrence_timezone: str | None = None
 
 
 class TaskUpdate(TaskCreate):
@@ -76,6 +80,11 @@ class ReminderOut(BaseModel):
     occurrence: datetime
     kind: str
     task: TaskOut
+
+
+class ReminderBatchOut(BaseModel):
+    processed_through: datetime
+    reminders: list[ReminderOut] = Field(default_factory=list)
 
 
 class GoogleStatusOut(BaseModel):

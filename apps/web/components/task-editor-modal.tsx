@@ -2,16 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { Task } from "@/lib/types";
 
 export type TaskEditorPayload = {
   title: string;
   description?: string | null;
   due_at?: string | null;
-  has_time?: boolean;
+  due_date?: string | null;
   end_at?: string | null;
+  end_date?: string | null;
   reminder_minutes_before?: number | null;
   recurrence_rule?: string | null;
+  recurrence_timezone?: string | null;
 };
 
 const reminderOptions = [
@@ -41,17 +44,22 @@ const repeatOptions = [
 ] as const;
 
 function dateValue(task?: Task | null) {
+  if (task?.due_date) return task.due_date;
   if (!task?.due_at) return "";
-  return new Date(task.due_at).toISOString().slice(0, 10);
+  return formatInTimeZone(task.due_at, task.recurrence_timezone || deviceTimezone(), "yyyy-MM-dd");
 }
 
-function timeValue(value?: string | null) {
+function timeValue(value?: string | null, timezone?: string | null) {
   if (!value) return "";
-  return new Date(value).toTimeString().slice(0, 5);
+  return formatInTimeZone(value, timezone || deviceTimezone(), "HH:mm");
 }
 
-function localDateTimeIso(date: string, time: string) {
-  return new Date(`${date}T${time || "00:00"}`).toISOString();
+function deviceTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function zonedDateTimeIso(date: string, time: string, timezone: string) {
+  return fromZonedTime(`${date}T${time}:00`, timezone).toISOString();
 }
 
 function durationFromTask(task?: Task | null) {
@@ -68,20 +76,27 @@ function repeatBase(rule: string | null | undefined) {
     .join(";");
 }
 
-function repeatUntilValue(rule: string | null | undefined) {
+function repeatUntilValue(rule: string | null | undefined, timezone?: string | null) {
   const until = rule?.split(";").find((part) => part.startsWith("UNTIL="))?.split("=")[1];
   if (!until) return "";
   const normalized = until.replace("Z", "");
   const year = normalized.slice(0, 4);
   const month = normalized.slice(4, 6);
   const day = normalized.slice(6, 8);
+  if (normalized.includes("T")) {
+    const hour = normalized.slice(9, 11);
+    const minute = normalized.slice(11, 13);
+    const second = normalized.slice(13, 15);
+    return formatInTimeZone(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`, timezone || deviceTimezone(), "yyyy-MM-dd");
+  }
   return year && month && day ? `${year}-${month}-${day}` : "";
 }
 
-function withRepeatUntil(rule: string, untilDate: string) {
+function withRepeatUntil(rule: string, untilDate: string, timed: boolean, timezone: string) {
   if (!rule || !untilDate) return rule || null;
-  const until = new Date(`${untilDate}T23:59:59`).toISOString();
-  const stamp = until.replaceAll("-", "").replaceAll(":", "").split(".")[0];
+  if (!timed) return `${rule};UNTIL=${untilDate.replaceAll("-", "")}`;
+  const until = fromZonedTime(`${untilDate}T23:59:59`, timezone).toISOString();
+  const stamp = `${until.replaceAll("-", "").replaceAll(":", "").split(".")[0]}Z`;
   return `${rule};UNTIL=${stamp}`;
 }
 
@@ -99,7 +114,7 @@ export function TaskEditorModal({
   onSave: (payload: Partial<TaskEditorPayload>) => Promise<unknown>;
 }) {
   const readOnly = Boolean(task?.is_preview || task?.source === "google");
-  const allowReminderOnly = Boolean(task?.source === "google" && !task?.is_preview);
+  const allowReminderOnly = Boolean(task?.source === "google" && task?.due_at && !task?.is_preview);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
@@ -116,11 +131,11 @@ export function TaskEditorModal({
     setTitle(task?.title ?? "");
     setDescription(task?.description ?? "");
     setDate(dateValue(task));
-    setTime(task?.has_time ? timeValue(task.due_at) : "");
+    setTime(task?.due_at ? timeValue(task.due_at, task.recurrence_timezone) : "");
     setDuration(durationFromTask(task));
     setReminder(task?.reminder_minutes_before?.toString() ?? "");
     setRepeat(repeatBase(task?.recurrence_rule));
-    setRepeatUntil(repeatUntilValue(task?.recurrence_rule));
+    setRepeatUntil(repeatUntilValue(task?.recurrence_rule, task?.recurrence_timezone));
     setError("");
   }, [open, task]);
 
@@ -142,20 +157,24 @@ export function TaskEditorModal({
       if (allowReminderOnly) {
         await onSave({ reminder_minutes_before: reminder ? Number(reminder) : null });
       } else {
-        const hasTime = Boolean(date && time);
-        const dueAt = date ? localDateTimeIso(date, time) : null;
+        const timed = Boolean(date && time);
+        const recurrenceTimezone = timed && repeat ? task?.recurrence_timezone || deviceTimezone() : null;
+        const interpretationTimezone = task?.recurrence_timezone || recurrenceTimezone || deviceTimezone();
+        const dueAt = timed ? zonedDateTimeIso(date, time, interpretationTimezone) : null;
         const endAt =
-          date && time && duration
-            ? new Date(new Date(`${date}T${time}`).getTime() + Number(duration) * 60000).toISOString()
+          dueAt && duration
+            ? new Date(new Date(dueAt).getTime() + Number(duration) * 60000).toISOString()
             : null;
         await onSave({
           title: title.trim(),
           description: description.trim() || null,
           due_at: dueAt,
-          has_time: hasTime,
+          due_date: date && !timed ? date : null,
           end_at: endAt,
-          reminder_minutes_before: hasTime && reminder ? Number(reminder) : null,
-          recurrence_rule: date && repeat ? withRepeatUntil(repeat, repeatUntil) : null,
+          end_date: null,
+          reminder_minutes_before: timed && reminder ? Number(reminder) : null,
+          recurrence_rule: date && repeat ? withRepeatUntil(repeat, repeatUntil, timed, interpretationTimezone) : null,
+          recurrence_timezone: recurrenceTimezone,
         });
       }
       onClose();

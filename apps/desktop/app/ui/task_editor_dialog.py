@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import html
 import re
+from zoneinfo import ZoneInfo
 
-from PySide6.QtCore import QDate, QTime, Qt, QTimer, QUrl
+from PySide6.QtCore import QDate, QTime, QTimeZone, Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -33,6 +34,7 @@ from app.services.recurrence import (
 )
 from app.ui.components.optional_datetime import OptionalDateField, OptionalTimeField
 from app.utils.datetime_utils import to_local
+from sway_core.recurrence import valid_timezone
 
 # Optional earlier reminder, on top of the always-on reminder at the task time.
 _EXTRA_REMINDER_OPTIONS = [
@@ -102,6 +104,10 @@ def _display_url(url: str, limit: int = 34) -> str:
     if len(url) <= limit:
         return url
     return f"{url[: limit - 1]}…"
+
+
+def _system_timezone() -> str:
+    return valid_timezone(bytes(QTimeZone.systemTimeZoneId()).decode() or "UTC")
 
 
 class TaskEditorDialog(QDialog):
@@ -213,7 +219,7 @@ class TaskEditorDialog(QDialog):
         self.duration_combo.setEnabled(False)
         self.repeat_combo.setEnabled(False)
         self.until_field.setEnabled(False)
-        self.reminder_combo.setEnabled(True)
+        self.reminder_combo.setEnabled(self._task is not None and self._task.due_at is not None)
         self._note.setText(
             "From Google Calendar — only the additional reminder can be changed "
             "(it won’t change the event in Google)."
@@ -229,14 +235,14 @@ class TaskEditorDialog(QDialog):
             self.time_field.blockSignals(False)
         self.time_field.setEnabled(has_date)
 
-        has_time = has_date and self.time_field.value() is not None
+        timed = has_date and self.time_field.value() is not None
         # No time → no reminder and no duration.
-        if not has_time and self.reminder_combo.currentData() is not None:
+        if not timed and self.reminder_combo.currentData() is not None:
             self.reminder_combo.setCurrentIndex(0)
-        self.reminder_combo.setEnabled(has_time)
-        if not has_time and self.duration_combo.currentData() is not None:
+        self.reminder_combo.setEnabled(timed)
+        if not timed and self.duration_combo.currentData() is not None:
             self.duration_combo.setCurrentIndex(0)
-        self.duration_combo.setEnabled(has_time)
+        self.duration_combo.setEnabled(timed)
 
         # Recurrence needs a date; the end-date only matters when repeating.
         if not has_date and self.repeat_combo.currentData() is not None:
@@ -251,26 +257,30 @@ class TaskEditorDialog(QDialog):
         self.title_edit.setText(task.title)
         self.desc_edit.setPlainText(task.description or "")
         self._refresh_description_links()
-        if task.due_at:
-            local = to_local(task.due_at)
+        if task.due_date:
+            self.date_field.set_value(QDate(task.due_date.year, task.due_date.month, task.due_date.day))
+        elif task.due_at:
+            zone = ZoneInfo(valid_timezone(task.recurrence_timezone or _system_timezone()))
+            local = task.due_at.astimezone(zone)
             self.date_field.set_value(QDate(local.year, local.month, local.day))
-            if task.has_time:
-                self.time_field.set_value(QTime(local.hour, local.minute))
-                ridx = self.reminder_combo.findData(task.reminder_minutes_before)
-                if ridx >= 0:
-                    self.reminder_combo.setCurrentIndex(ridx)
-                if task.end_at is not None:
-                    minutes = round((task.end_at - task.due_at).total_seconds() / 60)
-                    if minutes > 0:
-                        self._select_duration(minutes)
+            self.time_field.set_value(QTime(local.hour, local.minute))
+            ridx = self.reminder_combo.findData(task.reminder_minutes_before)
+            if ridx >= 0:
+                self.reminder_combo.setCurrentIndex(ridx)
+            if task.end_at is not None:
+                minutes = round((task.end_at - task.due_at).total_seconds() / 60)
+                if minutes > 0:
+                    self._select_duration(minutes)
         if task.recurrence_rule:
             freq, interval, until = parse_rule_string(task.recurrence_rule)
             self._select_repeat((freq, interval))
             if until is not None:
-                local_until = to_local(until)
-                self.until_field.set_value(
-                    QDate(local_until.year, local_until.month, local_until.day)
+                until_date = (
+                    until.astimezone(ZoneInfo(valid_timezone(task.recurrence_timezone or _system_timezone()))).date()
+                    if isinstance(until, datetime)
+                    else until
                 )
+                self.until_field.set_value(QDate(until_date.year, until_date.month, until_date.day))
 
     def _refresh_description_links(self) -> None:
         while self.link_layout.count():
@@ -381,46 +391,58 @@ class TaskEditorDialog(QDialog):
         """Return the collected field values as a dict (datetimes in UTC)."""
         qdate = self.date_field.value()
         qtime = self.time_field.value()
-        has_time = qdate is not None and qtime is not None
+        timed = qdate is not None and qtime is not None
 
         due_at: datetime | None = None
-        if qdate is not None:
-            if has_time:
-                local = datetime(
-                    qdate.year(), qdate.month(), qdate.day(),
-                    qtime.hour(), qtime.minute(),
-                ).astimezone()
-            else:
-                local = datetime(qdate.year(), qdate.month(), qdate.day()).astimezone()
+        due_date: date | None = None
+        recurrence_timezone = None
+        repeat = self.repeat_combo.currentData()
+        if qdate is not None and timed:
+            interpretation_timezone = (
+                self._task.recurrence_timezone if self._task and self._task.recurrence_timezone else _system_timezone()
+            )
+            recurrence_timezone = interpretation_timezone if repeat is not None else None
+            local = datetime(
+                qdate.year(), qdate.month(), qdate.day(),
+                qtime.hour(), qtime.minute(),
+                tzinfo=ZoneInfo(interpretation_timezone),
+            )
             due_at = local.astimezone(timezone.utc)
+        elif qdate is not None:
+            due_date = date(qdate.year(), qdate.month(), qdate.day())
 
         end_at = None
-        if has_time and due_at is not None:
+        if timed and due_at is not None:
             data = self.duration_combo.currentData()
             minutes = self._custom_minutes if data == "custom" else data
             if minutes:
                 end_at = due_at + timedelta(minutes=minutes)
 
         recurrence_rule = None
-        repeat = self.repeat_combo.currentData()
-        if repeat is not None and due_at is not None:
+        if repeat is not None and (due_at is not None or due_date is not None):
             freq, interval = repeat
-            until_dt = None
+            until_value = None
             until_q = self.until_field.value()
             if until_q is not None:
-                until_dt = datetime(
-                    until_q.year(), until_q.month(), until_q.day(), 23, 59, 59
-                ).astimezone().astimezone(timezone.utc)
-            recurrence_rule = build_rule_string(freq, interval, until_dt)
+                if timed:
+                    until_value = datetime(
+                        until_q.year(), until_q.month(), until_q.day(), 23, 59, 59,
+                        tzinfo=ZoneInfo(recurrence_timezone or "UTC"),
+                    ).astimezone(timezone.utc)
+                else:
+                    until_value = date(until_q.year(), until_q.month(), until_q.day())
+            recurrence_rule = build_rule_string(freq, interval, until_value)
 
         return {
             "title": self.title_edit.text().strip(),
             "description": self.desc_edit.toPlainText().strip() or None,
             "due_at": due_at,
-            "has_time": has_time,
+            "due_date": due_date,
             "end_at": end_at,
+            "end_date": None,
             "reminder_minutes_before": (
-                self.reminder_combo.currentData() if has_time else None
+                self.reminder_combo.currentData() if timed else None
             ),
             "recurrence_rule": recurrence_rule,
+            "recurrence_timezone": recurrence_timezone if timed and repeat is not None else None,
         }

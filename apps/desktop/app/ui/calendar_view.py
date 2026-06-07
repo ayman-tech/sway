@@ -169,10 +169,14 @@ class CalendarView(QWidget):
         start, end = self._visible_range()
         by_date: dict[date, list[Task]] = {}
         for task in self._service.get_tasks_in_range(start, end):
-            if task.due_at is None:
-                continue
-            d = to_local(task.due_at).date()
-            by_date.setdefault(d, []).append(task)
+            if task.due_at is not None:
+                by_date.setdefault(to_local(task.due_at).date(), []).append(task)
+            elif task.due_date is not None:
+                day = task.due_date
+                exclusive_end = task.end_date or (day + timedelta(days=1))
+                while day < exclusive_end:
+                    by_date.setdefault(day, []).append(task)
+                    day += timedelta(days=1)
         self._by_date = by_date
         self._calendar.set_task_dates({d: len(v) for d, v in by_date.items()})
         self._update_detail()
@@ -192,6 +196,6 @@ class CalendarView(QWidget):
         # Timed tasks first (ordered by time), then untimed (all-day) tasks.
         day_tasks = sorted(
             self._by_date.get(qd.toPython(), []),
-            key=lambda t: (not t.has_time, t.due_at, t.created_at),
+            key=lambda t: (t.due_at is None, t.due_at or datetime.max.replace(tzinfo=timezone.utc), t.created_at),
         )
         self._detail.set_groups([TaskGroup("", day_tasks)] if day_tasks else [])

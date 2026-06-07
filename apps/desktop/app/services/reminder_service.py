@@ -84,7 +84,7 @@ class ReminderService(QObject):
         """
         events: list[_ReminderEvent] = []
         for task in self._tasks.get_active_tasks():
-            if not (task.due_at and task.has_time):
+            if task.due_at is None:
                 continue
             is_google = task.is_read_only
             # Google events: only the user's optional lead reminder fires (the event /

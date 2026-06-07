@@ -8,6 +8,7 @@ from api.availability_shares import (
     MAX_ACTIVE_SHARES,
     TOKEN_ALPHABET,
     _generate_token,
+    _is_missing_table,
     _is_token_collision,
     _valid_token,
 )
@@ -48,6 +49,24 @@ def test_token_collision_requires_unique_token_hash_violation() -> None:
 
     assert _is_token_collision(collision)
     assert not _is_token_collision(other_unique_violation)
+
+
+def test_missing_table_detection_only_accepts_postgrest_missing_table_code() -> None:
+    missing_table = APIError({
+        "code": "PGRST205",
+        "message": "Could not find the table in the schema cache",
+        "details": None,
+        "hint": None,
+    })
+    permission_error = APIError({
+        "code": "42501",
+        "message": "permission denied for table availability_shares",
+        "details": None,
+        "hint": None,
+    })
+
+    assert _is_missing_table(missing_table)
+    assert not _is_missing_table(permission_error)
 
 
 def test_create_share_retries_token_collision(monkeypatch) -> None:

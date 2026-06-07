@@ -6,6 +6,8 @@ Local-only bookkeeping columns (sync_status, last_synced_at, cloud_id) are not s
 
 from __future__ import annotations
 
+from datetime import date
+
 from app.constants import SyncStatus
 from app.models.task import Task
 from app.services.auth_service import AuthService
@@ -22,11 +24,13 @@ def _to_cloud(task: Task, user_id: str) -> dict:
         "priority": int(task.priority),
         "status": str(task.status),
         "due_at": to_iso(task.due_at),
-        "has_time": bool(task.has_time),
+        "due_date": task.due_date.isoformat() if task.due_date else None,
         "start_at": to_iso(task.start_at),
         "end_at": to_iso(task.end_at),
+        "end_date": task.end_date.isoformat() if task.end_date else None,
         "reminder_minutes_before": task.reminder_minutes_before,
         "recurrence_rule": task.recurrence_rule,
+        "recurrence_timezone": task.recurrence_timezone,
         "recurrence_parent_id": task.recurrence_parent_id,
         "google_event_id": task.google_event_id,
         "source": str(task.source),
@@ -46,11 +50,13 @@ def _from_cloud(row: dict) -> Task:
         priority=row.get("priority") or 0,
         status=row.get("status") or "pending",
         due_at=from_iso(row.get("due_at")),
-        has_time=bool(row.get("has_time")),
+        due_date=date.fromisoformat(row["due_date"]) if row.get("due_date") else None,
         start_at=from_iso(row.get("start_at")),
         end_at=from_iso(row.get("end_at")),
+        end_date=date.fromisoformat(row["end_date"]) if row.get("end_date") else None,
         reminder_minutes_before=row.get("reminder_minutes_before"),
         recurrence_rule=row.get("recurrence_rule"),
+        recurrence_timezone=row.get("recurrence_timezone"),
         recurrence_parent_id=row.get("recurrence_parent_id"),
         google_event_id=row.get("google_event_id"),
         source=row.get("source") or "sway",

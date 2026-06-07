@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from app.db.database import Database
 from app.models.task import Task
 from app.utils.datetime_utils import from_iso, to_iso
@@ -9,8 +11,8 @@ from app.utils.datetime_utils import from_iso, to_iso
 _COLUMNS = [
     "id", "cloud_id", "google_event_id", "source",
     "title", "description", "project_id", "priority", "status",
-    "due_at", "has_time", "start_at", "end_at",
-    "reminder_minutes_before", "recurrence_rule", "recurrence_parent_id",
+    "due_at", "due_date", "start_at", "end_at", "end_date",
+    "reminder_minutes_before", "recurrence_rule", "recurrence_timezone", "recurrence_parent_id",
     "completed_at", "created_at", "updated_at", "deleted_at",
     "sync_status", "last_synced_at",
 ]
@@ -28,11 +30,13 @@ def _to_row(task: Task) -> dict:
         "priority": int(task.priority),
         "status": str(task.status),
         "due_at": to_iso(task.due_at),
-        "has_time": 1 if task.has_time else 0,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
         "start_at": to_iso(task.start_at),
         "end_at": to_iso(task.end_at),
+        "end_date": task.end_date.isoformat() if task.end_date else None,
         "reminder_minutes_before": task.reminder_minutes_before,
         "recurrence_rule": task.recurrence_rule,
+        "recurrence_timezone": task.recurrence_timezone,
         "recurrence_parent_id": task.recurrence_parent_id,
         "completed_at": to_iso(task.completed_at),
         "created_at": to_iso(task.created_at),
@@ -55,11 +59,13 @@ def _from_row(row) -> Task:
         priority=row["priority"],
         status=row["status"],
         due_at=from_iso(row["due_at"]),
-        has_time=bool(row["has_time"]),
+        due_date=date.fromisoformat(row["due_date"]) if row["due_date"] else None,
         start_at=from_iso(row["start_at"]),
         end_at=from_iso(row["end_at"]),
+        end_date=date.fromisoformat(row["end_date"]) if row["end_date"] else None,
         reminder_minutes_before=row["reminder_minutes_before"],
         recurrence_rule=row["recurrence_rule"],
+        recurrence_timezone=row["recurrence_timezone"],
         recurrence_parent_id=row["recurrence_parent_id"],
         completed_at=from_iso(row["completed_at"]),
         created_at=from_iso(row["created_at"]),
@@ -98,7 +104,7 @@ class TaskRepository:
         """All not-deleted, not-completed tasks."""
         cur = self._conn().execute(
             "SELECT * FROM tasks WHERE deleted_at IS NULL AND status = 'pending' "
-            "ORDER BY (due_at IS NULL), due_at ASC"
+            "ORDER BY (due_at IS NULL AND due_date IS NULL), due_date ASC, due_at ASC"
         )
         return [_from_row(r) for r in cur.fetchall()]
 

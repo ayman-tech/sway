@@ -8,10 +8,18 @@ wheels/
 
 # Virtual environments
 .venv
-.env
+.env*
+!.env.example
 *.spec
-packaging/icon_1024.png
-packaging/Sway.iconset/
+apps/desktop/packaging/icon_1024.png
+apps/desktop/packaging/Sway.iconset/
+
+# JavaScript-generated files
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
 
 # user defined
 dev-plans/

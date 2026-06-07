@@ -1,0 +1,152 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { Bell, CalendarDays, RefreshCw, Save, UserRound } from "lucide-react";
+import { api } from "@/lib/api";
+import type { GoogleStatus, UserSettings } from "@/lib/types";
+import { useTheme, type ThemePreference } from "@/components/theme-provider";
+
+export default function SettingsPage() {
+  const qc = useQueryClient();
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api<UserSettings>("/settings"),
+  });
+  const { data: google } = useQuery({
+    queryKey: ["google-status"],
+    queryFn: () => api<GoogleStatus>("/integrations/google/status"),
+  });
+  const patchSettings = useMutation({
+    mutationFn: (payload: Partial<UserSettings>) => api<UserSettings>("/settings", { method: "PATCH", body: JSON.stringify(payload) }),
+    onSuccess: (updated) => {
+      setTheme(updated.theme);
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      window.dispatchEvent(new CustomEvent("sway-profile-updated", { detail: updated }));
+    },
+  });
+  useEffect(() => {
+    if (!settings) return;
+    setFirstName(settings.first_name ?? "");
+    setLastName(settings.last_name ?? "");
+  }, [settings]);
+  const connectGoogle = async () => {
+    const res = await api<{ url: string }>("/integrations/google/connect-url");
+    window.location.href = res.url;
+  };
+  const syncGoogle = useMutation({
+    mutationFn: () => api<{ imported: number }>("/integrations/google/sync", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["google-status"] });
+      qc.invalidateQueries({ queryKey: ["task-groups"] });
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+    },
+  });
+  const disconnectGoogle = useMutation({
+    mutationFn: () => api<void>("/integrations/google", { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["google-status"] }),
+  });
+
+  return (
+    <section className="max-w-3xl space-y-6">
+      <div>
+        <h1 className="text-3xl font-black">Settings</h1>
+        <p className="mt-1 text-[#667085]">Configure the web app experience.</p>
+      </div>
+      <div className="panel p-5">
+        <h2 className="flex items-center gap-2 text-xl font-black">
+          <UserRound size={20} /> Profile
+        </h2>
+        <p className="mt-2 text-[var(--muted)]">
+          Your first name appears on new public availability links.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input
+            className="field"
+            maxLength={80}
+            onChange={(event) => setFirstName(event.target.value)}
+            placeholder="First name"
+            value={firstName}
+          />
+          <input
+            className="field"
+            maxLength={80}
+            onChange={(event) => setLastName(event.target.value)}
+            placeholder="Last name"
+            value={lastName}
+          />
+        </div>
+        <button
+          className="btn btn-primary mt-4"
+          disabled={patchSettings.isPending}
+          onClick={() => patchSettings.mutate({ first_name: firstName.trim() || null, last_name: lastName.trim() || null })}
+        >
+          <Save size={18} /> Save profile
+        </button>
+      </div>
+      <div className="panel p-5">
+        <h2 className="text-xl font-black">Theme</h2>
+        <p className="mt-2 text-[var(--muted)]">
+          System follows your browser setting. Current active theme: {resolvedTheme}.
+        </p>
+        <select
+          className="field mt-4 max-w-xs"
+          onChange={(event) => {
+            const next = event.target.value as ThemePreference;
+            setTheme(next);
+            patchSettings.mutate({ theme: next });
+          }}
+          value={theme}
+        >
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+      <div className="panel p-5">
+        <h2 className="flex items-center gap-2 text-xl font-black">
+          <Bell size={20} /> Browser notifications
+        </h2>
+        <p className="mt-2 text-[#667085]">Reminders can show browser notifications while the web app is open.</p>
+        <button
+          className="btn btn-secondary mt-4"
+          onClick={async () => {
+            if ("Notification" in window) {
+              const permission = await Notification.requestPermission();
+              patchSettings.mutate({ browser_notifications_enabled: permission === "granted" });
+            }
+          }}
+        >
+          Enable notifications
+        </button>
+      </div>
+      <div className="panel p-5">
+        <h2 className="flex items-center gap-2 text-xl font-black">
+          <CalendarDays size={20} /> Google Calendar
+        </h2>
+        <p className="mt-2 text-[#667085]">
+          {google?.connected ? `Connected as ${google.account ?? "Google Calendar"}` : "Connect Google Calendar to import visible events as read-only tasks."}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {google?.connected ? (
+            <>
+              <button className="btn btn-primary" onClick={() => syncGoogle.mutate()}>
+                <RefreshCw size={18} /> Sync now
+              </button>
+              <button className="btn btn-secondary" onClick={() => disconnectGoogle.mutate()}>
+                Disconnect
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-primary" onClick={connectGoogle}>
+              Connect Google
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}

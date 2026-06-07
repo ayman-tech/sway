@@ -1,0 +1,306 @@
+/* Sway light theme */
+
+QWidget {
+    background-color: #f4f5f7;
+    color: #1d2129;
+    font-family: ".AppleSystemUIFont", "Helvetica Neue", "Arial";
+    font-size: 14px;
+}
+
+QLabel {
+    background: transparent;
+}
+
+/* Sidebar */
+#Sidebar {
+    background-color: #eaecef;
+    border-right: 1px solid #dcdfe4;
+}
+
+#SidebarLogo {
+    font-size: 20px;
+    font-weight: 700;
+    color: #11151c;
+    padding: 6px 4px;
+}
+
+#NavButton {
+    background-color: transparent;
+    border: none;
+    text-align: left;
+    padding: 10px 14px;
+    border-radius: 8px;
+    color: #4b5563;
+    font-size: 14px;
+}
+#NavButton:hover {
+    background-color: #e1e4e9;
+}
+#NavButton:checked {
+    background-color: #d4d8df;
+    color: #11151c;
+    font-weight: 600;
+}
+
+#AddTaskButton {
+    background-color: #2b6cff;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-weight: 600;
+}
+#AddTaskButton:hover {
+    background-color: #1f5ef0;
+}
+
+/* Header */
+#ViewHeader {
+    font-size: 22px;
+    font-weight: 700;
+    padding: 18px 20px 8px 20px;
+}
+
+/* Task cards */
+#TaskCard {
+    background-color: #ffffff;
+    border: 1px solid #e3e6ea;
+    border-radius: 10px;
+}
+#TaskCard:hover {
+    border: 1px solid #cfd4db;
+}
+#TaskTitle {
+    font-size: 14px;
+    color: #1d2129;
+}
+#TaskTitle[completed="true"] {
+    color: #9aa1ab;
+}
+#TaskSubtitle {
+    font-size: 12px;
+    color: #6b7280;
+}
+#TaskDeleteBtn {
+    background-color: transparent;
+    border: none;
+    color: #8b909a;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 12px;
+    padding: 0px;
+}
+#TaskDeleteBtn:hover {
+    background-color: #fbe3e4;
+    color: #d1383d;
+}
+
+/* Group section headers */
+#GroupHeader {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6b7280;
+}
+#GroupHeader[overdue="true"] {
+    color: #d1383d;
+}
+#GroupCount {
+    font-size: 12px;
+    font-weight: 600;
+    color: #9aa1ab;
+}
+
+#TaskSubtitle[overdue="true"] {
+    color: #d1383d;
+}
+
+#EmptyState {
+    color: #9aa1ab;
+    font-size: 15px;
+    padding: 40px;
+}
+
+#Placeholder {
+    color: #9aa1ab;
+    font-size: 16px;
+}
+
+/* Auth screen */
+#AuthCard {
+    background-color: #ffffff;
+    border: 1px solid #e3e6ea;
+    border-radius: 12px;
+}
+#AuthError {
+    color: #d1383d;
+    font-size: 13px;
+}
+#LinkButton {
+    background: transparent;
+    border: none;
+    color: #2b6cff;
+    text-align: left;
+    padding: 4px 0;
+}
+#LinkButton:hover {
+    color: #1f5ef0;
+}
+
+/* Calendar */
+#CalendarDayTitle {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1d2129;
+    padding: 4px 4px 2px 4px;
+}
+QCalendarWidget {
+    background-color: #f4f5f7;
+}
+QCalendarWidget QWidget#qt_calendar_navigationbar {
+    background-color: #eaecef;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+QCalendarWidget QToolButton {
+    background-color: transparent;
+    color: #1d2129;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+QCalendarWidget QToolButton:hover {
+    background-color: #e1e4e9;
+}
+QCalendarWidget QToolButton::menu-indicator {
+    image: none;
+}
+QCalendarWidget QMenu {
+    background-color: #ffffff;
+    color: #1d2129;
+}
+QCalendarWidget QSpinBox {
+    background-color: #ffffff;
+    color: #1d2129;
+    border: 1px solid #e3e6ea;
+    border-radius: 4px;
+}
+QCalendarWidget QAbstractItemView:enabled {
+    background-color: #f4f5f7;
+    color: #1d2129;
+    selection-background-color: transparent;
+    selection-color: #1d2129;
+    outline: none;
+}
+QCalendarWidget QAbstractItemView:disabled {
+    color: #b9bec6;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #cfd4db;
+    border-radius: 5px;
+    min-height: 30px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    border: 2px solid #b9bec6;
+    background: transparent;
+}
+QCheckBox::indicator:checked {
+    background: #2b6cff;
+    border: 2px solid #2b6cff;
+}
+
+QLineEdit, QPlainTextEdit, QComboBox, QDateEdit, QDateTimeEdit {
+    background-color: #ffffff;
+    border: 1px solid #d7dbe1;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
+QDateEdit:focus, QDateTimeEdit:focus {
+    border: 1px solid #2b6cff;
+}
+QComboBox:disabled, QLineEdit:disabled, QPlainTextEdit:disabled {
+    color: #b9bec6;
+    background-color: #f0f1f4;
+}
+/* Flat drop-down — no beveled/shadowed arrow box. */
+QComboBox::drop-down {
+    border: none;
+    background: transparent;
+    width: 22px;
+}
+QComboBox::down-arrow:disabled {
+    image: none;
+}
+
+QPushButton {
+    background-color: #e6e9ee;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+}
+QPushButton:hover {
+    background-color: #dadee5;
+}
+#DetectedLinkButton {
+    background-color: #edf3ff;
+    border: 1px solid #c9d9ff;
+    color: #1f5ef0;
+    text-align: left;
+    padding: 5px 8px;
+}
+#DetectedLinkButton:hover {
+    background-color: #dbe7ff;
+    border: 1px solid #9dbbff;
+}
+#DetectedLinkCopyButton {
+    background-color: #ffffff;
+    border: 1px solid #c9d9ff;
+    color: #6f7682;
+    padding: 5px 10px;
+}
+#DetectedLinkCopyButton:hover {
+    background-color: #edf3ff;
+    border: 1px solid #9dbbff;
+}
+
+/* Nullable date/time field button — looks like an input, not a button */
+#FieldButton {
+    background-color: #ffffff;
+    border: 1px solid #d7dbe1;
+    border-radius: 6px;
+    padding: 6px 10px;
+    text-align: left;
+    color: #1d2129;
+}
+#FieldButton:hover {
+    border: 1px solid #cfd4db;
+}
+#FieldButton:disabled {
+    color: #b9bec6;
+    background-color: #f0f1f4;
+}
+#FieldClearBtn {
+    background-color: transparent;
+    border: none;
+    color: #8b909a;
+    border-radius: 13px;
+    padding: 0px;
+}
+#FieldClearBtn:hover {
+    background-color: #fbe3e4;
+    color: #d1383d;
+}

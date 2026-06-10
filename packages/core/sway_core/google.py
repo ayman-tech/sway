@@ -1,4 +1,4 @@
-"""Google Calendar event mapping shared by desktop and API."""
+"""Google Calendar event mapping used by the centralized API importer."""
 
 from __future__ import annotations
 
@@ -75,9 +75,10 @@ def task_from_google_event(event: dict, user_id: str, existing: Task | None = No
         end_date=end_date,
         source=Source.GOOGLE,
         google_event_id=event_id,
-        status=TaskStatus.PENDING,
+        status=existing.status if existing else TaskStatus.PENDING,
         reminder_minutes_before=existing.reminder_minutes_before if existing and due_at is not None else None,
         created_at=existing.created_at if existing else utc_now(),
+        completed_at=existing.completed_at if existing else None,
     )
 
 

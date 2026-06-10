@@ -140,9 +140,18 @@ class TaskRepository:
 
     # ---- sync support ----
     def list_pending_sync(self) -> list[Task]:
-        """All rows needing a push — including completed and soft-deleted ones."""
+        """Pending Sway-owned rows; Google rows are written only by FastAPI."""
         cur = self._conn().execute(
-            "SELECT * FROM tasks WHERE sync_status = 'pending' ORDER BY updated_at ASC"
+            "SELECT * FROM tasks WHERE sync_status = 'pending' AND source != 'google' "
+            "ORDER BY updated_at ASC"
+        )
+        return [_from_row(r) for r in cur.fetchall()]
+
+    def list_pending_google_state(self) -> list[Task]:
+        """Google rows with user-owned completion/reminder state to send through FastAPI."""
+        cur = self._conn().execute(
+            "SELECT * FROM tasks WHERE sync_status = 'pending' AND source = 'google' "
+            "ORDER BY updated_at ASC"
         )
         return [_from_row(r) for r in cur.fetchall()]
 

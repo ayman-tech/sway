@@ -4,6 +4,17 @@ import { supabase } from "@/lib/supabase";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+async function errorMessage(res: Response) {
+  const text = await res.text();
+  try {
+    const body = JSON.parse(text) as { detail?: unknown };
+    if (typeof body.detail === "string") return body.detail;
+  } catch {
+    // The response was not JSON.
+  }
+  return text || `Request failed: ${res.status}`;
+}
+
 async function token() {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token;
@@ -23,8 +34,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
   if (!res.ok) {
-    const message = await res.text();
-    throw new Error(message || `Request failed: ${res.status}`);
+    throw new Error(await errorMessage(res));
   }
   if (res.status === 204) {
     return undefined as T;
@@ -41,8 +51,7 @@ export async function publicApi<T>(path: string, init: RequestInit = {}): Promis
     },
   });
   if (!res.ok) {
-    const message = await res.text();
-    throw new Error(message || `Request failed: ${res.status}`);
+    throw new Error(await errorMessage(res));
   }
   return res.json() as Promise<T>;
 }

@@ -16,6 +16,7 @@ from api.google_integration import (
     disconnect,
     google_status,
     oauth_callback,
+    save_credentials,
     sync_google,
 )
 from api.schemas import (
@@ -23,6 +24,7 @@ from api.schemas import (
     AvailabilityShareCreatedOut,
     AvailabilityShareOut,
     GoogleConnectUrlOut,
+    GoogleCredentialsUpdate,
     GoogleStatusOut,
     GoogleSyncOut,
     MeOut,
@@ -184,8 +186,15 @@ def due_reminders(since: str | None = None, user: CurrentUser = Depends(get_curr
 
 @app.get("/integrations/google/status", response_model=GoogleStatusOut)
 def get_google_status(user: CurrentUser = Depends(get_current_user)) -> GoogleStatusOut:
-    connected, account = google_status(user)
-    return GoogleStatusOut(connected=connected, account=account)
+    return google_status(user)
+
+
+@app.put("/integrations/google/credentials", response_model=GoogleConnectUrlOut)
+def put_google_credentials(
+    payload: GoogleCredentialsUpdate,
+    user: CurrentUser = Depends(get_current_user),
+) -> GoogleConnectUrlOut:
+    return GoogleConnectUrlOut(url=save_credentials(user, payload))
 
 
 @app.get("/integrations/google/connect-url", response_model=GoogleConnectUrlOut)
@@ -194,13 +203,16 @@ def get_google_connect_url(user: CurrentUser = Depends(get_current_user)) -> Goo
 
 
 @app.get("/integrations/google/callback")
-def google_callback(code: str, state: str):
-    return RedirectResponse(oauth_callback(code, state))
+def google_callback(code: str, state: str) -> RedirectResponse:
+    return RedirectResponse(url=oauth_callback(code, state), status_code=302)
 
 
 @app.post("/integrations/google/sync", response_model=GoogleSyncOut)
-def post_google_sync(user: CurrentUser = Depends(get_current_user)) -> GoogleSyncOut:
-    return GoogleSyncOut(imported=sync_google(user))
+def post_google_sync(
+    force: bool = False,
+    user: CurrentUser = Depends(get_current_user),
+) -> GoogleSyncOut:
+    return sync_google(user, force=force)
 
 
 @app.delete("/integrations/google", status_code=204)

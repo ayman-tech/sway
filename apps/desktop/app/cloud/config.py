@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -23,10 +24,11 @@ from app.config import data_dir
 
 def _normalize_url(url: str) -> str:
     """Reduce to the base project URL (drop a pasted /rest/v1 or other path)."""
-    parsed = urlparse(url.strip())
+    cleaned = _dotenv_value(url)
+    parsed = urlparse(cleaned)
     if parsed.scheme and parsed.netloc:
         return f"{parsed.scheme}://{parsed.netloc}"
-    return url.strip().rstrip("/")
+    return cleaned.rstrip("/")
 
 
 def _dotenv_paths() -> list[Path]:
@@ -36,8 +38,29 @@ def _dotenv_paths() -> list[Path]:
     return list(dict.fromkeys(paths))
 
 
+def _dotenv_value(raw: str) -> str:
+    """Parse a simple dotenv value while preserving hashes inside values."""
+    value = raw.strip()
+    if value[:1] in {"'", '"'}:
+        quote = value[0]
+        escaped = False
+        for index, char in enumerate(value[1:], start=1):
+            if char == quote and not escaped:
+                return value[1:index]
+            escaped = char == "\\" and not escaped
+        return value[1:]
+    return re.sub(r"\s+#.*$", "", value).rstrip()
+
+
 def _load_dotenv() -> None:
     """Read local .env files into os.environ, without overriding existing values."""
+    allowed = {
+        "SUPABASE_URL",
+        "SUPABASE_PUBLISHABLE_KEY",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_KEY",
+        "API_PUBLIC_URL",
+    }
     for env_path in _dotenv_paths():
         if not env_path.exists():
             continue
@@ -50,19 +73,15 @@ def _load_dotenv() -> None:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+            key = key.strip()
+            if key in allowed:
+                os.environ.setdefault(key, _dotenv_value(value))
 
 
 @dataclass(frozen=True)
 class SupabaseConfig:
     url: str
     anon_key: str
-
-
-@dataclass(frozen=True)
-class GoogleConfig:
-    client_id: str
-    client_secret: str
 
 
 def _config_path():
@@ -113,37 +132,4 @@ def load_api_public_url() -> str | None:
                 url = json.loads(path.read_text()).get("api_url")
             except (OSError, ValueError):
                 return None
-    return url.strip().rstrip("/") if url else None
-
-
-def load_google_config() -> GoogleConfig | None:
-    """OAuth client credentials for the Google Calendar import (a Desktop app client)."""
-    _load_dotenv()
-    client_id = os.environ.get("GOOGLE_CLIENT_ID")
-    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-    if not (client_id and client_secret):
-        path = data_dir() / "google.json"
-        if path.exists():
-            try:
-                data = json.loads(path.read_text())
-                # Accept either a flat file or Google's downloaded {"installed": {...}}.
-                inner = data.get("installed") or data.get("web") or data
-                client_id = client_id or inner.get("client_id")
-                client_secret = client_secret or inner.get("client_secret")
-            except (OSError, ValueError):
-                return None
-    if client_id and client_secret:
-        return GoogleConfig(client_id=client_id, client_secret=client_secret)
-    return None
-
-
-def is_google_configured() -> bool:
-    return load_google_config() is not None
-
-
-def save_google_config(client_id: str, client_secret: str) -> None:
-    """Persist OAuth client credentials locally (so no .env editing is needed)."""
-    path = data_dir() / "google.json"
-    path.write_text(
-        json.dumps({"client_id": client_id.strip(), "client_secret": client_secret.strip()})
-    )
+    return _normalize_url(url) if url else None

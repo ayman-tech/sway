@@ -55,10 +55,16 @@ erDiagram
 
     GOOGLE_CALENDAR_CONNECTIONS {
         uuid user_id PK,FK
-        jsonb token_json
+        text oauth_client_id
+        text oauth_client_secret_ciphertext
+        text token_ciphertext
         jsonb sync_tokens_json
         text account_email
         text oauth_state UK
+        timestamptz oauth_state_created_at
+        timestamptz last_synced_at
+        timestamptz sync_lease_until
+        text last_sync_error
         timestamptz updated_at
     }
 
@@ -81,7 +87,7 @@ erDiagram
 | `auth.users` | Supabase-managed accounts and authentication data. | Managed by Supabase Auth. |
 | `public.tasks` | Cloud copy of Sway and imported Google Calendar tasks. | Users can access only their own rows through RLS. |
 | `public.user_settings` | Per-user profile names and web settings such as theme and notification state. | Users can access only their own row through RLS. |
-| `public.google_calendar_connections` | Server-side Google OAuth tokens and calendar sync cursors. | API service-role access only; no public RLS policies. |
+| `public.google_calendar_connections` | Encrypted per-user Google OAuth credentials/tokens and calendar sync state. | API service-role access only; no public RLS policies. |
 | `public.availability_shares` | Frozen public availability snapshots that expire after seven days. | API service-role access only; no public RLS policies. |
 
 All public tables referencing `auth.users` use `ON DELETE CASCADE`, so deleting an account
@@ -168,8 +174,9 @@ flowchart LR
     SQLite <-->|task sync| Supabase[(Supabase Postgres)]
     Web[Web App] -->|authenticated requests| API[FastAPI]
     API -->|user JWT and RLS| Supabase
-    API -->|service role| Private[Google connections and availability shares]
+    API -->|service role| Private[Encrypted Google connections and availability shares]
     Private --> Supabase
+    API -->|one-way import| Google[Google Calendar]
     Public[Public availability link] -->|anonymous token request| API
 ```
 

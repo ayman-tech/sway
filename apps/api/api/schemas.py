@@ -88,8 +88,19 @@ class ReminderBatchOut(BaseModel):
 
 
 class GoogleStatusOut(BaseModel):
+    configured: bool
     connected: bool
+    setup_available: bool
+    client_id: str | None = None
+    redirect_uri: str
     account: str | None = None
+    last_synced_at: datetime | None = None
+    last_sync_error: str | None = None
+
+
+class GoogleCredentialsUpdate(BaseModel):
+    client_id: str = Field(min_length=1, max_length=512)
+    client_secret: str = Field(min_length=1, max_length=1024)
 
 
 class GoogleConnectUrlOut(BaseModel):
@@ -98,6 +109,7 @@ class GoogleConnectUrlOut(BaseModel):
 
 class GoogleSyncOut(BaseModel):
     imported: int
+    skipped: bool = False
 
 
 class AvailabilitySnapshot(BaseModel):

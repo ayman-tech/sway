@@ -3,9 +3,24 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+
+
+def _dotenv_value(raw: str) -> str:
+    """Parse a simple dotenv value while preserving hashes inside values."""
+    value = raw.strip()
+    if value[:1] in {"'", '"'}:
+        quote = value[0]
+        escaped = False
+        for index, char in enumerate(value[1:], start=1):
+            if char == quote and not escaped:
+                return value[1:index]
+            escaped = char == "\\" and not escaped
+        return value[1:]
+    return re.sub(r"\s+#.*$", "", value).rstrip()
 
 
 def _load_dotenv() -> None:
@@ -22,7 +37,7 @@ def _load_dotenv() -> None:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+            os.environ.setdefault(key.strip(), _dotenv_value(value))
 
 
 @dataclass(frozen=True)
@@ -32,13 +47,12 @@ class Settings:
     supabase_service_role_key: str | None
     api_public_url: str
     web_public_url: str
-    google_client_id: str | None
-    google_client_secret: str | None
+    google_credentials_encryption_key: str | None
     google_redirect_uri: str
 
 
 def _normalize_public_url(url: str) -> str:
-    cleaned = url.strip().strip("'\"")
+    cleaned = _dotenv_value(url)
     parsed = urlparse(cleaned)
     if parsed.scheme and parsed.netloc:
         return f"{parsed.scheme}://{parsed.netloc}"
@@ -64,8 +78,7 @@ def get_settings() -> Settings:
         supabase_service_role_key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY"),
         api_public_url=api_url,
         web_public_url=web_url,
-        google_client_id=os.environ.get("GOOGLE_WEB_CLIENT_ID") or os.environ.get("GOOGLE_CLIENT_ID"),
-        google_client_secret=os.environ.get("GOOGLE_WEB_CLIENT_SECRET") or os.environ.get("GOOGLE_CLIENT_SECRET"),
+        google_credentials_encryption_key=os.environ.get("GOOGLE_CREDENTIALS_ENCRYPTION_KEY"),
         google_redirect_uri=os.environ.get(
             "GOOGLE_REDIRECT_URI",
             f"{api_url.rstrip('/')}/integrations/google/callback",

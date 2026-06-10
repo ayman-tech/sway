@@ -28,6 +28,7 @@ class SyncController(QObject):
         self._sync = sync_service
         self._auth = auth_service
         self._busy = False
+        self._pending_force_google = False
         self._lock = threading.Lock()
         self._timer = QTimer(self)
         self._timer.setInterval(_PERIODIC_INTERVAL_MS)
@@ -40,23 +41,29 @@ class SyncController(QObject):
     def stop(self) -> None:
         self._timer.stop()
 
-    def request_sync(self) -> None:
+    def request_sync(self, force_google: bool = False) -> None:
         if self._auth.user is None:
             return
         with self._lock:
             if self._busy:
+                if force_google:
+                    self._pending_force_google = True
                 return
             self._busy = True
         self.syncStarted.emit()
-        threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=self._run, args=(force_google,), daemon=True).start()
 
-    def _run(self) -> None:
+    def _run(self, force_google: bool) -> None:
         try:
-            result = self._sync.sync()
+            result = self._sync.sync(force_google=force_google)
             ok, message = result.ok, result.message
         except Exception as exc:  # noqa: BLE001 (report any failure to the UI)
             ok, message = False, str(exc) or "Sync failed"
         finally:
             with self._lock:
                 self._busy = False
+                run_forced_next = self._pending_force_google
+                self._pending_force_google = False
         self.syncFinished.emit(ok, message)
+        if run_forced_next:
+            self.request_sync(force_google=True)

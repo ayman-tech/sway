@@ -34,7 +34,7 @@ class Database:
         }
         if columns and "due_date" not in columns:
             # The date-only scheduling redesign intentionally resets legacy task rows.
-            # Settings and OAuth credentials live outside this table and are preserved.
+            # Local settings live outside this table and are preserved.
             self._conn.execute("DROP TABLE tasks")
         self._conn.executescript(_SCHEMA_FILE.read_text())
         self._conn.commit()

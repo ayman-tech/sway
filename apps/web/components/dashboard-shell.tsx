@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarCheck, CalendarDays, CheckCircle2, Home, ListTodo, LogOut, Plus, Settings } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ReminderPoller } from "@/components/reminder-poller";
+import { GoogleSyncTrigger } from "@/components/google-sync-trigger";
 import { api } from "@/lib/api";
 import type { Task, UserSettings } from "@/lib/types";
 import { useTheme } from "@/components/theme-provider";
@@ -119,6 +120,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </aside>
       <main className="min-w-0 px-5 py-6 lg:px-8">
         <ReminderPoller />
+        <GoogleSyncTrigger />
         {children}
       </main>
       <TaskEditorModal

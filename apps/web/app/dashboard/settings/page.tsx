@@ -4,14 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Bell, CalendarDays, RefreshCw, Save, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
-import type { GoogleStatus, UserSettings } from "@/lib/types";
+import type { GoogleStatus, GoogleSyncResult, UserSettings } from "@/lib/types";
 import { useTheme, type ThemePreference } from "@/components/theme-provider";
+import { GoogleSetupModal } from "@/components/google-setup-modal";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [googleSetupOpen, setGoogleSetupOpen] = useState(false);
+  const [googleMessage, setGoogleMessage] = useState("");
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<UserSettings>("/settings"),
@@ -34,20 +37,43 @@ export default function SettingsPage() {
     setLastName(settings.last_name ?? "");
   }, [settings]);
   const connectGoogle = async () => {
-    const res = await api<{ url: string }>("/integrations/google/connect-url");
-    window.location.href = res.url;
+    setGoogleMessage("");
+    if (!google) {
+      setGoogleMessage("Google status is still loading.");
+      return;
+    }
+    if (!google.setup_available) {
+      setGoogleMessage("Google setup is unavailable until the API encryption key is configured.");
+      return;
+    }
+    if (!google.configured) {
+      setGoogleSetupOpen(true);
+      return;
+    }
+    try {
+      const res = await api<{ url: string }>("/integrations/google/connect-url");
+      window.location.href = res.url;
+    } catch (exc) {
+      setGoogleMessage(exc instanceof Error ? exc.message : "Unable to connect Google Calendar.");
+    }
   };
   const syncGoogle = useMutation({
-    mutationFn: () => api<{ imported: number }>("/integrations/google/sync", { method: "POST" }),
-    onSuccess: () => {
+    mutationFn: () => api<GoogleSyncResult>("/integrations/google/sync?force=true", { method: "POST" }),
+    onSuccess: (result) => {
+      setGoogleMessage(`Google sync complete. ${result.imported} event${result.imported === 1 ? "" : "s"} changed.`);
       qc.invalidateQueries({ queryKey: ["google-status"] });
       qc.invalidateQueries({ queryKey: ["task-groups"] });
       qc.invalidateQueries({ queryKey: ["calendar"] });
     },
+    onError: (error) => setGoogleMessage(error instanceof Error ? error.message : "Google sync failed."),
   });
   const disconnectGoogle = useMutation({
     mutationFn: () => api<void>("/integrations/google", { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["google-status"] }),
+    onSuccess: () => {
+      setGoogleMessage("Google Calendar disconnected. Your saved OAuth credentials were retained.");
+      qc.invalidateQueries({ queryKey: ["google-status"] });
+    },
+    onError: (error) => setGoogleMessage(error instanceof Error ? error.message : "Unable to disconnect Google Calendar."),
   });
 
   return (
@@ -130,6 +156,11 @@ export default function SettingsPage() {
         <p className="mt-2 text-[#667085]">
           {google?.connected ? `Connected as ${google.account ?? "Google Calendar"}` : "Connect Google Calendar to import visible events as read-only tasks."}
         </p>
+        {google?.last_synced_at ? (
+          <p className="mt-1 text-sm text-[var(--muted)]">Last synced {new Date(google.last_synced_at).toLocaleString()}.</p>
+        ) : null}
+        {google?.last_sync_error ? <p className="mt-2 text-sm font-bold text-[#b42318]">{google.last_sync_error}</p> : null}
+        {googleMessage ? <p className="mt-2 text-sm font-bold text-[var(--muted)]">{googleMessage}</p> : null}
         <div className="mt-4 flex flex-wrap gap-3">
           {google?.connected ? (
             <>
@@ -139,14 +170,30 @@ export default function SettingsPage() {
               <button className="btn btn-secondary" onClick={() => disconnectGoogle.mutate()}>
                 Disconnect
               </button>
+              <button className="btn btn-secondary" onClick={() => setGoogleSetupOpen(true)}>
+                Change credentials
+              </button>
             </>
           ) : (
-            <button className="btn btn-primary" onClick={connectGoogle}>
-              Connect Google
-            </button>
+            <>
+              <button className="btn btn-primary" disabled={!google} onClick={connectGoogle}>
+                Connect Google
+              </button>
+              {google?.configured ? (
+                <button className="btn btn-secondary" onClick={() => setGoogleSetupOpen(true)}>
+                  Change credentials
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       </div>
+      <GoogleSetupModal
+        clientId={google?.client_id}
+        onClose={() => setGoogleSetupOpen(false)}
+        open={googleSetupOpen}
+        redirectUri={google?.redirect_uri ?? ""}
+      />
     </section>
   );
 }

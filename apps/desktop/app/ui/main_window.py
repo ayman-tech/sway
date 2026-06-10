@@ -5,7 +5,8 @@ from __future__ import annotations
 import threading
 from datetime import datetime, timedelta
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, QTimer, QUrl, Qt, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
     QDialog,
@@ -18,11 +19,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.cloud.config import load_google_config, save_google_config
 from app.constants import APP_NAME
 from app.repositories.settings_repo import SettingsRepository
 from app.services.auth_service import AuthService
-from app.services.google_calendar_service import GoogleCalendarService
+from app.services.google_api_service import GoogleApiService, GoogleStatus
 from app.services.sync_controller import SyncController
 from app.services.task_service import COMPLETED_RETENTION_DAYS, TaskService
 from app.ui.availability_view import AvailabilityView
@@ -46,14 +46,14 @@ _TITLES = {key: title for key, _, title in _NAV_ITEMS}
 class MainWindow(QWidget):
     tasksChanged = Signal()  # emitted after any task create/update/complete/delete
     signOutRequested = Signal()
-    _googleResult = Signal(bool, str)  # ok, email-or-error (from connect worker)
+    _googleResult = Signal(str, bool, object)
 
     def __init__(
         self,
         service: TaskService,
         auth_service: AuthService | None = None,
         sync_controller: SyncController | None = None,
-        google_service: GoogleCalendarService | None = None,
+        google_service: GoogleApiService | None = None,
         settings_repo: SettingsRepository | None = None,
     ) -> None:
         super().__init__()
@@ -61,6 +61,11 @@ class MainWindow(QWidget):
         self._auth = auth_service
         self._sync = sync_controller
         self._google = google_service
+        self._google_status: GoogleStatus | None = None
+        self._google_poll_attempts = 0
+        self._google_poll = QTimer(self)
+        self._google_poll.setInterval(2_000)
+        self._google_poll.timeout.connect(self._refresh_google_status)
         if settings_repo is None:
             from app.db.database import Database
             settings_repo = SettingsRepository(Database())
@@ -77,6 +82,7 @@ class MainWindow(QWidget):
             self._sync.syncFinished.connect(self._on_sync_finished)
         self._googleResult.connect(self._on_google_result)
         self.refresh()
+        self._refresh_google_status()
 
     def set_minimize_to_tray(self, enabled: bool) -> None:
         self._minimize_to_tray = enabled
@@ -106,7 +112,7 @@ class MainWindow(QWidget):
     def _on_sync_requested(self) -> None:
         if self._sync is not None:
             self._settings_view.set_sync_status("Syncing…")
-            self._sync.request_sync()
+            self._sync.request_sync(force_google=True)
 
     def _on_sync_finished(self, ok: bool, message: str) -> None:
         if ok:
@@ -116,52 +122,87 @@ class MainWindow(QWidget):
             )
         else:
             self._settings_view.set_sync_status(f"Sync error: {message}")
+        self._refresh_google_status()
 
     # ---- Google Calendar ----
     def _on_google_setup(self) -> None:
-        existing = load_google_config()
+        status = self._google_status
+        if self._google is None or status is None:
+            self._settings_view.set_google_status("Google status is still loading.")
+            return
+        if not status.setup_available:
+            self._settings_view.set_google_status(
+                "Google setup is unavailable until the API encryption key is configured."
+            )
+            return
         dialog = GoogleSetupDialog(
             self,
-            client_id=existing.client_id if existing else "",
-            client_secret=existing.client_secret if existing else "",
+            client_id=status.client_id or "",
+            redirect_uri=status.redirect_uri,
         )
         if not dialog.exec():
             return
         client_id, client_secret = dialog.values()
-        save_google_config(client_id, client_secret)
-        # Drop any token from a previous (possibly wrong) client, then re-authorize.
-        if self._google is not None:
-            self._google.disconnect()
-        self._settings_view.set_google_configured(True)
-        self._settings_view.set_google_connected(False)
-        self._on_google_connect()  # proceed straight to the browser consent
+        self._settings_view.set_google_status("Saving credentials…")
+        self._run_google("authorize", lambda: self._google.save_credentials(client_id, client_secret))
 
     def _on_google_connect(self) -> None:
         if self._google is None:
             return
         self._settings_view.set_google_status("Opening browser to authorize…")
-        threading.Thread(target=self._google_connect_worker, daemon=True).start()
-
-    def _google_connect_worker(self) -> None:
-        try:
-            email = self._google.connect()
-            self._googleResult.emit(True, email)
-        except Exception as exc:  # noqa: BLE001
-            self._googleResult.emit(False, str(exc))
-
-    def _on_google_result(self, ok: bool, message: str) -> None:
-        if ok:
-            self._settings_view.set_google_connected(True)
-            self._settings_view.set_google_status(f"Connected as {message}")
-            if self._sync is not None:
-                self._sync.request_sync()  # import now
-        else:
-            self._settings_view.set_google_status(f"Couldn’t connect: {message}")
+        self._run_google("authorize", self._google.connect_url)
 
     def _on_google_disconnect(self) -> None:
         if self._google is not None:
-            self._google.disconnect()
-        self._settings_view.set_google_connected(False)
+            self._settings_view.set_google_status("Disconnecting…")
+            self._run_google("disconnect", self._google.disconnect)
+
+    def _refresh_google_status(self) -> None:
+        if self._google is not None:
+            self._run_google("status", self._google.status)
+
+    def _run_google(self, action: str, operation) -> None:
+        def worker() -> None:
+            try:
+                self._googleResult.emit(action, True, operation())
+            except Exception as exc:  # noqa: BLE001
+                self._googleResult.emit(action, False, str(exc) or "Google Calendar request failed.")
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_google_result(self, action: str, ok: bool, result: object) -> None:
+        if not ok:
+            self._settings_view.set_google_status(str(result))
+            return
+        if action == "authorize":
+            QDesktopServices.openUrl(QUrl(str(result)))
+            self._google_poll_attempts = 0
+            self._google_poll.start()
+            self._settings_view.set_google_status("Finish authorization in your browser…")
+            return
+        if action == "disconnect":
+            self._refresh_google_status()
+            return
+        if action != "status" or not isinstance(result, GoogleStatus):
+            return
+        polling = self._google_poll.isActive()
+        self._google_status = result
+        self._settings_view.set_google_configured(result.configured)
+        self._settings_view.set_google_connected(result.connected)
+        if result.connected:
+            self._google_poll.stop()
+            self._settings_view.set_google_status(
+                f"Connected as {result.account or 'Google Calendar'}"
+            )
+            if self._sync is not None and polling:
+                self._sync.request_sync()
+        elif result.last_sync_error:
+            self._settings_view.set_google_status(result.last_sync_error)
+        elif not result.setup_available:
+            self._settings_view.set_google_status("Google setup is unavailable on the API server.")
+        if polling:
+            self._google_poll_attempts += 1
+            if self._google_poll_attempts >= 60:
+                self._google_poll.stop()
 
     # ---- construction ----
     def _build(self) -> None:
@@ -247,8 +288,9 @@ class MainWindow(QWidget):
         self._settings_view = SettingsView(
             account_email=account_email,
             sync_enabled=self._sync is not None,
-            google_configured=self._google is not None and self._google.is_configured(),
-            google_connected=self._google is not None and self._google.is_connected(),
+            google_available=self._google is not None,
+            google_configured=False,
+            google_connected=False,
         )
         self._settings_view.syncRequested.connect(self._on_sync_requested)
         self._settings_view.signOutRequested.connect(self.signOutRequested)

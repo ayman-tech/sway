@@ -18,9 +18,6 @@ uv run pyinstaller \
   --collect-all realtime \
   --collect-all storage3 \
   --collect-all supabase_functions \
-  --collect-all googleapiclient \
-  --collect-all google_auth_oauthlib \
-  --collect-all google \
   main.py
 
 echo "Built: dist/Sway.app"

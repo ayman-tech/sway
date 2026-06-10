@@ -41,6 +41,17 @@ create index if not exists idx_tasks_user_updated on public.tasks (user_id, upda
 create index if not exists idx_tasks_user_due_at on public.tasks (user_id, due_at);
 create index if not exists idx_tasks_user_due_date on public.tasks (user_id, due_date);
 
+create or replace function public.set_updated_at() returns trigger as $$
+begin
+    new.updated_at = now();
+    return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists tasks_set_updated_at on public.tasks;
+create trigger tasks_set_updated_at before insert or update on public.tasks
+    for each row execute function public.set_updated_at();
+
 alter table public.tasks enable row level security;
 
 drop policy if exists "tasks_select_own" on public.tasks;
@@ -88,10 +99,16 @@ create policy "user_settings_delete_own" on public.user_settings
 
 create table if not exists public.google_calendar_connections (
     user_id uuid primary key references auth.users(id) on delete cascade,
-    token_json jsonb,
+    oauth_client_id text not null,
+    oauth_client_secret_ciphertext text not null,
+    token_ciphertext text,
     sync_tokens_json jsonb not null default '{}'::jsonb,
     account_email text,
     oauth_state text unique,
+    oauth_state_created_at timestamptz,
+    last_synced_at timestamptz,
+    sync_lease_until timestamptz,
+    last_sync_error text,
     updated_at timestamptz not null default now()
 );
 

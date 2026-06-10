@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "FastAPI backend for Sway web."
 requires-python = ">=3.12"
 dependencies = [
+    "cryptography>=48.0.0",
     "fastapi>=0.124.0",
     "google-api-python-client>=2.197.0",
     "google-auth>=2.53.0",

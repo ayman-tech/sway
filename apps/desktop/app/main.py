@@ -13,7 +13,7 @@ from app.repositories.settings_repo import SettingsRepository
 from app.repositories.sqlite_repo import TaskRepository
 from app.repositories.supabase_repo import SupabaseRepo
 from app.services.auth_service import AuthService
-from app.services.google_calendar_service import GoogleCalendarService
+from app.services.google_api_service import GoogleApiService
 from app.services.reminder_service import ReminderService
 from app.services.sync_controller import SyncController
 from app.services.sync_service import SyncService
@@ -39,10 +39,7 @@ class SwayApp:
         # settings use a thread-safe connection (never the GUI's).
         self._auth_db = Database(check_same_thread=False)
         self._auth = AuthService(SettingsRepository(self._auth_db))
-        # Google service has its own thread-safe connection (token/syncToken), since
-        # connect runs on a worker thread and import runs on the sync worker.
-        self._google_db = Database(check_same_thread=False)
-        self._google = GoogleCalendarService(SettingsRepository(self._google_db))
+        self._google = GoogleApiService(self._auth) if self._auth.is_configured() else None
         self._sync = self._build_sync() if self._auth.is_configured() else None
 
         self._window: MainWindow | None = None

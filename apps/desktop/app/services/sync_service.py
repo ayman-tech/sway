@@ -9,7 +9,7 @@ from app.repositories.settings_repo import SettingsRepository
 from app.repositories.sqlite_repo import TaskRepository
 from app.repositories.supabase_repo import SupabaseRepo
 from app.services.auth_service import AuthService
-from app.services.google_calendar_service import GoogleCalendarService
+from app.services.google_api_service import GoogleApiService
 from app.services.task_service import COMPLETED_RETENTION_DAYS
 from app.utils.datetime_utils import from_iso, to_iso, utc_now
 
@@ -34,7 +34,7 @@ class SyncService:
         supabase_repo: SupabaseRepo,
         auth_service: AuthService,
         settings_repo: SettingsRepository,
-        google_service: GoogleCalendarService | None = None,
+        google_service: GoogleApiService | None = None,
     ) -> None:
         self._tasks = task_repo
         self._cloud = supabase_repo
@@ -42,30 +42,38 @@ class SyncService:
         self._settings = settings_repo
         self._google = google_service
 
-    def sync(self) -> SyncResult:
+    def sync(self, force_google: bool = False) -> SyncResult:
         if self._auth.user is None:
             return SyncResult(ok=False, message="Not signed in.")
-
-        # 0) Import Google Calendar changes into local first; they then push up like
-        #    any other local change. A Google failure must not break task sync.
-        if self._google is not None and self._google.is_connected():
-            try:
-                self._google.import_into(self._tasks, self._auth.user.id)
-            except Exception:  # noqa: BLE001 (task sync proceeds regardless)
-                pass
 
         # Retention: tombstone completed tasks older than the window (then push below).
         cutoff = utc_now() - timedelta(days=COMPLETED_RETENTION_DAYS)
         self._tasks.soft_delete_completed_before(to_iso(cutoff), to_iso(utc_now()))
 
-        # 1) Push every locally-pending row (creates, edits, completes, soft-deletes).
+        # 1) Send only user-owned state for Google rows through FastAPI task actions.
+        if self._google is not None:
+            for task in self._tasks.list_pending_google_state():
+                try:
+                    self._google.push_task_state(task)
+                    self._tasks.mark_synced(task.id, to_iso(utc_now()))
+                except Exception:  # noqa: BLE001 - retry on the next sync
+                    break
+
+        # 2) Push every locally-pending Sway row (creates, edits, completes, soft-deletes).
         pending = self._tasks.list_pending_sync()
         self._cloud.push(pending)
         now_iso = to_iso(utc_now())
         for task in pending:
             self._tasks.mark_synced(task.id, now_iso)
 
-        # 2) Pull rows changed remotely since our last pull; last-write-wins.
+        # 3) Ask FastAPI to import Google changes. Failure must not block task sync.
+        if self._google is not None:
+            try:
+                self._google.sync(force=force_google)
+            except Exception:  # noqa: BLE001
+                pass
+
+        # 4) Pull rows changed remotely since our last pull; last-write-wins.
         # Query a little BEFORE last_pull_at (overlap) so a row that landed at/just under
         # the previous high-water mark can't be skipped forever. Re-fetched rows we already
         # have are no-ops (cloud.updated_at == local.updated_at → not newer).

@@ -41,11 +41,11 @@ sync/backup layer; Google Calendar is a read-only integration — never the sour
         PySide6 UI  (list · calendar · completed · settings · auth)
                               │
         Services  (TaskService · ReminderService · SyncService ·
-                   AuthService · GoogleCalendarService)
+                   AuthService · centralized Google API client)
                               │
         Repositories  (SqliteRepo · SupabaseRepo · SettingsRepo)
-              │                        │                     │
-          SQLite (local)        Supabase (cloud)     Google Calendar
+              │                        │
+          SQLite (local)        Supabase (cloud) ← FastAPI ← Google Calendar
 ```
 
 - UI never touches the database directly — it goes through services.
@@ -118,21 +118,14 @@ the CTA goes to `/auth`, and successful auth redirects to `/dashboard`.
 2. **SQL Editor** → run [`supabase/schema.sql`](supabase/schema.sql) (creates the task, settings,
    Google integration, and expiring availability-share tables + RLS).
 3. **Authentication → Sign In / Providers → Email** → turn **off** "Confirm email".
-4. **Database → triggers** (or SQL Editor) → add a server-timestamp trigger so sync ordering uses
-   the server clock:
-   ```sql
-   create or replace function public.set_updated_at() returns trigger as $$
-   begin new.updated_at = now(); return new; end $$ language plpgsql;
-   create trigger tasks_set_updated_at before insert or update on public.tasks
-     for each row execute function public.set_updated_at();
-   ```
-5. **Project Settings → API Keys** → copy the **Project URL** and the **publishable** key into
+4. **Project Settings → API Keys** → copy the **Project URL** and the **publishable** key into
    `apps/desktop/.env` or the shared root `.env`. You can use [`.env.example`](.env.example)
    as the template:
    ```
    SUPABASE_URL=https://YOURPROJECT.supabase.co
    SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    SUPABASE_SERVICE_ROLE_KEY=...
+   GOOGLE_CREDENTIALS_ENCRYPTION_KEY=...
    NEXT_PUBLIC_SUPABASE_URL=https://YOURPROJECT.supabase.co
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    API_PUBLIC_URL=http://localhost:8000
@@ -140,7 +133,8 @@ the CTA goes to `/auth`, and successful auth redirects to `/dashboard`.
    NEXT_PUBLIC_API_URL=http://localhost:8000
    ```
    The API service-role key is required for Google integration storage and public availability
-   share links. `API_PUBLIC_URL` is FastAPI's public server URL and is also used by the desktop
+   share links. The encryption key protects Google OAuth credentials and tokens stored in Supabase.
+   `API_PUBLIC_URL` is FastAPI's public server URL and is also used by the desktop
    client; `NEXT_PUBLIC_API_URL` tells the browser where to call FastAPI; `WEB_PUBLIC_URL` tells
    FastAPI which website origin to allow and place in returned share links. Never expose the
    service-role key through a `NEXT_PUBLIC_...` variable.
@@ -152,14 +146,14 @@ Restart the app → you'll get a login screen to create an account, and tasks sy
 
 ### Optional: Google Calendar import
 
-1. In [Google Cloud Console](https://console.cloud.google.com): create a project, enable the
+1. Generate `GOOGLE_CREDENTIALS_ENCRYPTION_KEY` with:
+   `cd apps/api && uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+2. In [Google Cloud Console](https://console.cloud.google.com): create a project, enable the
    **Google Calendar API**, configure the **OAuth consent screen** (add yourself as a test user),
-   and create an **OAuth client ID of type "Desktop app"**.
-2. In Sway: **Settings → Set up Google Calendar** → paste the Client ID + secret → authorize in the
-   browser. Events from your visible calendars import as read-only tasks.
-3. For the web app: create an OAuth client ID of type **Web application** and set
-   `http://localhost:8000/integrations/google/callback` as an authorized redirect URI. Put the
-   client ID/secret in `GOOGLE_WEB_CLIENT_ID` and `GOOGLE_WEB_CLIENT_SECRET`.
+   and create an **OAuth client ID of type "Web application"**.
+3. Add `http://localhost:8000/integrations/google/callback` as an authorized redirect URI.
+4. In web or desktop Sway Settings, paste the Client ID + secret and authorize in the browser.
+   FastAPI securely stores the shared connection and imports events into Supabase.
 
 ## Building the macOS app
 
@@ -174,12 +168,14 @@ code-sign + notarize it with an Apple Developer ID (it runs locally without that
 ## Configuration & data
 
 - **Config:** `.env` (or env vars `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
-  `API_PUBLIC_URL`); Google credentials saved via the in-app dialog.
-- **Data dir:** `~/Library/Application Support/Sway/` — `sway.db`, `supabase.json`, `google.json`,
+  `API_PUBLIC_URL`); encrypted Google credentials are saved centrally through the in-app dialog.
+- **Data dir:** `~/Library/Application Support/Sway/` — `sway.db`, `supabase.json`,
   and `logs/sway.log`. Override with `SWAY_DATA_DIR` (used by tests).
 - **Date-model reset:** upgrading from the legacy `has_time` schema automatically resets
   local SQLite task rows. Run `supabase/reset_tasks_date_model.sql`, then rerun
   `supabase/schema.sql`, and sync Google Calendar to repopulate imported events.
+- **Destructive development reset:** run `supabase/reset_all.sql`, then `supabase/schema.sql`;
+  delete the desktop `sway.db` before restarting the app.
 
 ## Notes & limitations
 

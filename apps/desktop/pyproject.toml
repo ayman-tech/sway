@@ -5,9 +5,6 @@ description = "Sway — a TickTick-style productivity app (PySide6 + SQLite, off
 readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "google-api-python-client>=2.197.0",
-    "google-auth>=2.53.0",
-    "google-auth-oauthlib>=1.4.0",
     "pyside6>=6.11.1",
     "python-dateutil>=2.9.0.post0",
     "sway-core",

@@ -33,7 +33,7 @@ def setup_logging() -> None:
     root.addHandler(stream_handler)
 
     # Quiet noisy third-party request logs.
-    for noisy in ("httpx", "httpcore", "urllib3", "googleapiclient", "google"):
+    for noisy in ("httpx", "httpcore", "urllib3"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

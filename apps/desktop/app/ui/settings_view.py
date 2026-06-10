@@ -28,11 +28,13 @@ class SettingsView(QWidget):
         self,
         account_email: str | None,
         sync_enabled: bool,
+        google_available: bool = True,
         google_configured: bool = False,
         google_connected: bool = False,
     ) -> None:
         super().__init__()
         self._sync_enabled = sync_enabled
+        self._google_available = google_available
         self._google_configured = google_configured
         self._google_connected = google_connected
         self._build(account_email)
@@ -132,10 +134,13 @@ class SettingsView(QWidget):
             self.googleConnectRequested.emit()
 
     def _refresh_google(self) -> None:
-        self._google_btn.setEnabled(True)
+        self._google_btn.setEnabled(self._google_available)
         # The "Change credentials" link is only useful once some are saved.
-        self._google_change_btn.setVisible(self._google_configured)
-        if not self._google_configured:
+        self._google_change_btn.setVisible(self._google_available and self._google_configured)
+        if not self._google_available:
+            self._google_btn.setText("Set up Google Calendar")
+            self._google_status.setText("Sign in and configure the Sway API to use Google Calendar.")
+        elif not self._google_configured:
             self._google_btn.setText("Set up Google Calendar")
             self._google_status.setText("Connect your Google Calendar to import events.")
         elif self._google_connected:

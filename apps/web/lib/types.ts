@@ -38,8 +38,19 @@ export type UserSettings = {
 };
 
 export type GoogleStatus = {
+  configured: boolean;
   connected: boolean;
+  setup_available: boolean;
+  client_id: string | null;
+  redirect_uri: string;
   account: string | null;
+  last_synced_at: string | null;
+  last_sync_error: string | null;
+};
+
+export type GoogleSyncResult = {
+  imported: number;
+  skipped: boolean;
 };
 
 export type AvailabilitySlots = Record<string, number[]>;

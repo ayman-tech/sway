@@ -80,6 +80,9 @@ create table if not exists public.user_settings (
 
 alter table public.user_settings add column if not exists first_name text;
 alter table public.user_settings add column if not exists last_name text;
+alter table public.user_settings add column if not exists api_key_hash text unique;
+alter table public.user_settings add column if not exists api_key_ciphertext text;
+alter table public.user_settings add column if not exists api_key_created_at timestamptz;
 
 alter table public.user_settings enable row level security;
 

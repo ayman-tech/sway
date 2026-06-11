@@ -52,6 +52,7 @@ class TaskGroupOut(BaseModel):
     label: str
     overdue: bool = False
     tasks: list[TaskOut] = Field(default_factory=list)
+    has_more: bool = False
 
 
 class MeOut(BaseModel):
@@ -101,6 +102,11 @@ class GoogleStatusOut(BaseModel):
 class GoogleCredentialsUpdate(BaseModel):
     client_id: str = Field(min_length=1, max_length=512)
     client_secret: str = Field(min_length=1, max_length=1024)
+
+
+class ApiKeyOut(BaseModel):
+    key: str | None = None
+    created_at: datetime | None = None
 
 
 class GoogleConnectUrlOut(BaseModel):

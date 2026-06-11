@@ -28,6 +28,7 @@ class TaskGroup:
     label: str
     tasks: list[Task] = field(default_factory=list)
     overdue: bool = False
+    has_more: bool = False
 
 
 def _normalize_schedule(
@@ -242,10 +243,15 @@ def tasks_in_range(tasks: list[Task], start: datetime, end: datetime, start_date
     return result
 
 
+_LATER_HORIZON_DAYS = 30
+
+
 def active_groups(tasks: list[Task], timezone_name: str = "UTC") -> list[TaskGroup]:
     today = datetime.now(ZoneInfo(valid_timezone(timezone_name))).date()
     week_end = today + timedelta(days=7)
+    later_cutoff = today + timedelta(days=_LATER_HORIZON_DAYS)
     buckets: dict[str, list[Task]] = {"Overdue": [], "Today": [], "Next 7 Days": [], "Untimed": [], "Later": []}
+    later_overflow = 0
     for task in active_display_tasks(tasks, timezone_name):
         due = _task_date(task, timezone_name)
         if due is None:
@@ -256,8 +262,10 @@ def active_groups(tasks: list[Task], timezone_name: str = "UTC") -> list[TaskGro
             buckets["Today"].append(task)
         elif due <= week_end:
             buckets["Next 7 Days"].append(task)
-        else:
+        elif due <= later_cutoff:
             buckets["Later"].append(task)
+        else:
+            later_overflow += 1
     for name in ("Overdue", "Today", "Next 7 Days", "Later"):
         buckets[name].sort(
             key=lambda task: (
@@ -267,11 +275,13 @@ def active_groups(tasks: list[Task], timezone_name: str = "UTC") -> list[TaskGro
             )
         )
     buckets["Untimed"].sort(key=lambda task: task.created_at, reverse=True)
-    return [
-        TaskGroup(name, bucket, overdue=name == "Overdue")
-        for name, bucket in buckets.items()
-        if bucket
-    ]
+    groups = []
+    for name, bucket in buckets.items():
+        if not bucket and not (name == "Later" and later_overflow):
+            continue
+        has_more = name == "Later" and later_overflow > 0
+        groups.append(TaskGroup(name, bucket, overdue=name == "Overdue", has_more=has_more))
+    return groups
 
 
 def completed_groups(tasks: list[Task], today: date | None = None) -> list[TaskGroup]:

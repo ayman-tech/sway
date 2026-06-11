@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from app.constants import APP_NAME
 from app.repositories.settings_repo import SettingsRepository
 from app.services.auth_service import AuthService
+from app.services.api_key_service import ApiKeyError, ApiKeyService
 from app.services.google_api_service import GoogleApiService, GoogleStatus
 from app.services.sync_controller import SyncController
 from app.services.task_service import COMPLETED_RETENTION_DAYS, TaskService
@@ -61,6 +62,7 @@ class MainWindow(QWidget):
         self._auth = auth_service
         self._sync = sync_controller
         self._google = google_service
+        self._api_key_svc = ApiKeyService(auth_service) if auth_service else None
         self._google_status: GoogleStatus | None = None
         self._google_poll_attempts = 0
         self._google_poll = QTimer(self)
@@ -83,6 +85,7 @@ class MainWindow(QWidget):
         self._googleResult.connect(self._on_google_result)
         self.refresh()
         self._refresh_google_status()
+        self._refresh_api_key()
 
     def set_minimize_to_tray(self, enabled: bool) -> None:
         self._minimize_to_tray = enabled
@@ -156,6 +159,39 @@ class MainWindow(QWidget):
         if self._google is not None:
             self._settings_view.set_google_status("Disconnecting…")
             self._run_google("disconnect", self._google.disconnect)
+
+    def _refresh_api_key(self) -> None:
+        if self._api_key_svc is None:
+            return
+        def worker() -> None:
+            try:
+                data = self._api_key_svc.get()
+                self._settings_view.set_api_key(data.get("key"), data.get("created_at"))
+            except ApiKeyError:
+                pass
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_api_key_regen(self) -> None:
+        if self._api_key_svc is None:
+            return
+        def worker() -> None:
+            try:
+                data = self._api_key_svc.generate()
+                self._settings_view.set_api_key(data.get("key"), data.get("created_at"))
+            except ApiKeyError as exc:
+                self._settings_view.set_api_key(None)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_api_key_revoke(self) -> None:
+        if self._api_key_svc is None:
+            return
+        def worker() -> None:
+            try:
+                self._api_key_svc.revoke()
+                self._settings_view.set_api_key(None)
+            except ApiKeyError:
+                pass
+        threading.Thread(target=worker, daemon=True).start()
 
     def _refresh_google_status(self) -> None:
         if self._google is not None:
@@ -297,6 +333,8 @@ class MainWindow(QWidget):
         self._settings_view.googleSetupRequested.connect(self._on_google_setup)
         self._settings_view.googleConnectRequested.connect(self._on_google_connect)
         self._settings_view.googleDisconnectRequested.connect(self._on_google_disconnect)
+        self._settings_view.apiKeyRegenRequested.connect(self._on_api_key_regen)
+        self._settings_view.apiKeyRevokeRequested.connect(self._on_api_key_revoke)
         self._register_view("settings", self._settings_view)
 
         outer.addWidget(self._stack, 1)

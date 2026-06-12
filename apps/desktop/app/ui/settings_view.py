@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -23,6 +25,8 @@ class SettingsView(QWidget):
     googleSetupRequested = Signal()
     googleConnectRequested = Signal()
     googleDisconnectRequested = Signal()
+    apiKeyRegenRequested = Signal()
+    apiKeyRevokeRequested = Signal()
 
     def __init__(
         self,
@@ -123,6 +127,37 @@ class SettingsView(QWidget):
         outer.addWidget(self._left(self._google_change_btn))
         self._refresh_google()
 
+        outer.addSpacing(10)
+
+        # Sway API Key
+        outer.addWidget(self._section("SWAY API KEY"))
+        self._api_key_field = QLineEdit()
+        self._api_key_field.setReadOnly(True)
+        self._api_key_field.setPlaceholderText("No key generated yet.")
+        self._api_key_field.setMinimumWidth(320)
+        key_row = QHBoxLayout()
+        key_row.setSpacing(6)
+        key_row.addWidget(self._api_key_field, 1)
+        self._api_key_copy_btn = QPushButton("Copy")
+        self._api_key_copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._api_key_copy_btn.setEnabled(False)
+        self._api_key_copy_btn.clicked.connect(self._copy_api_key)
+        key_row.addWidget(self._api_key_copy_btn)
+        outer.addLayout(key_row)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+        self._api_key_regen_btn = QPushButton("Generate key")
+        self._api_key_regen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._api_key_regen_btn.clicked.connect(self.apiKeyRegenRequested)
+        btn_row.addWidget(self._api_key_regen_btn)
+        self._api_key_revoke_btn = QPushButton("Revoke key")
+        self._api_key_revoke_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._api_key_revoke_btn.setVisible(False)
+        self._api_key_revoke_btn.clicked.connect(self.apiKeyRevokeRequested)
+        btn_row.addWidget(self._api_key_revoke_btn)
+        btn_row.addStretch(1)
+        outer.addLayout(btn_row)
+
         outer.addStretch(1)
 
     def _on_google_clicked(self) -> None:
@@ -183,3 +218,20 @@ class SettingsView(QWidget):
 
     def set_sync_status(self, text: str) -> None:
         self._status.setText(text)
+
+    def set_api_key(self, key: str | None, created_at: str | None = None) -> None:
+        if key:
+            self._api_key_field.setText(key)
+            self._api_key_copy_btn.setEnabled(True)
+            self._api_key_regen_btn.setText("Regenerate key")
+            self._api_key_revoke_btn.setVisible(True)
+        else:
+            self._api_key_field.clear()
+            self._api_key_copy_btn.setEnabled(False)
+            self._api_key_regen_btn.setText("Generate key")
+            self._api_key_revoke_btn.setVisible(False)
+
+    def _copy_api_key(self) -> None:
+        text = self._api_key_field.text()
+        if text:
+            QGuiApplication.clipboard().setText(text)

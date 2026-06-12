@@ -88,7 +88,7 @@ class TaskStore:
         self.client = user.client
 
     def list_all(self) -> list[Task]:
-        res = self.client.table("tasks").select("*").order("created_at", desc=True).execute()
+        res = self.client.table("tasks").select("*").eq("user_id", self.user.id).order("created_at", desc=True).execute()
         return [task_from_row(row) for row in (res.data or [])]
 
     def list_active(self) -> list[Task]:
@@ -108,7 +108,7 @@ class TaskStore:
         )
 
     def get(self, task_id: str) -> Task:
-        res = self.client.table("tasks").select("*").eq("id", task_id).limit(1).execute()
+        res = self.client.table("tasks").select("*").eq("id", task_id).eq("user_id", self.user.id).limit(1).execute()
         if not res.data:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found.")
         return task_from_row(res.data[0])

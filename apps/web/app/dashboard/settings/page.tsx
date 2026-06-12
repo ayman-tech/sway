@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Bell, CalendarDays, RefreshCw, Save, UserRound } from "lucide-react";
+import { Bell, CalendarDays, Check, Copy, KeyRound, RefreshCw, Save, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
-import type { GoogleStatus, GoogleSyncResult, UserSettings } from "@/lib/types";
+import type { ApiKeyOut, GoogleStatus, GoogleSyncResult, UserSettings } from "@/lib/types";
 import { useTheme, type ThemePreference } from "@/components/theme-provider";
 import { GoogleSetupModal } from "@/components/google-setup-modal";
 
@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [lastName, setLastName] = useState("");
   const [googleSetupOpen, setGoogleSetupOpen] = useState(false);
   const [googleMessage, setGoogleMessage] = useState("");
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<UserSettings>("/settings"),
@@ -23,6 +24,24 @@ export default function SettingsPage() {
     queryKey: ["google-status"],
     queryFn: () => api<GoogleStatus>("/integrations/google/status"),
   });
+  const { data: apiKey } = useQuery({
+    queryKey: ["api-key"],
+    queryFn: () => api<ApiKeyOut>("/me/api-key"),
+  });
+  const generateKey = useMutation({
+    mutationFn: () => api<ApiKeyOut>("/me/api-key", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["api-key"] }),
+  });
+  const revokeKey = useMutation({
+    mutationFn: () => api<void>("/me/api-key", { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["api-key"] }),
+  });
+  const copyApiKey = () => {
+    if (!apiKey?.key) return;
+    navigator.clipboard.writeText(apiKey.key);
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
+  };
   const patchSettings = useMutation({
     mutationFn: (payload: Partial<UserSettings>) => api<UserSettings>("/settings", { method: "PATCH", body: JSON.stringify(payload) }),
     onSuccess: (updated) => {
@@ -186,6 +205,47 @@ export default function SettingsPage() {
               ) : null}
             </>
           )}
+        </div>
+      </div>
+      <div className="panel p-5">
+        <h2 className="flex items-center gap-2 text-xl font-black">
+          <KeyRound size={20} /> Sway API Key
+        </h2>
+        <p className="mt-2 text-[#667085]">
+          Lets AI agents read and manage your tasks via MCP or HTTP.
+        </p>
+        {apiKey?.key ? (
+          <>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Created {apiKey.created_at ? new Date(apiKey.created_at).toLocaleDateString() : "—"}.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <input className="field font-mono text-sm" readOnly value={apiKey.key} />
+              <button className="btn btn-secondary px-3" onClick={copyApiKey} title="Copy API key">
+                {apiKeyCopied ? <Check size={17} /> : <Copy size={17} />}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-[var(--muted)]">No key generated yet.</p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            className="btn btn-primary"
+            disabled={generateKey.isPending}
+            onClick={() => generateKey.mutate()}
+          >
+            {apiKey?.key ? "Regenerate key" : "Generate key"}
+          </button>
+          {apiKey?.key ? (
+            <button
+              className="btn btn-secondary"
+              disabled={revokeKey.isPending}
+              onClick={() => revokeKey.mutate()}
+            >
+              Revoke key
+            </button>
+          ) : null}
         </div>
       </div>
       <GoogleSetupModal

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from api.auth import CurrentUser, get_current_user
 from api.availability_shares import create_share, get_share
 from api.config import get_settings
+from api.api_keys import generate_api_key, get_api_key, revoke_api_key
 from api.google_integration import (
     connect_url,
     disconnect,
@@ -20,6 +21,7 @@ from api.google_integration import (
     sync_google,
 )
 from api.schemas import (
+    ApiKeyOut,
     AvailabilityShareCreate,
     AvailabilityShareCreatedOut,
     AvailabilityShareOut,
@@ -76,6 +78,27 @@ def me(user: CurrentUser = Depends(get_current_user)) -> MeOut:
     return MeOut(id=user.id, email=user.email)
 
 
+@app.get("/me/api-key", response_model=ApiKeyOut)
+def get_api_key_route(user: CurrentUser = Depends(get_current_user)) -> ApiKeyOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Use your session token to manage API keys.")
+    return get_api_key(user)
+
+
+@app.post("/me/api-key", response_model=ApiKeyOut)
+def post_api_key_route(user: CurrentUser = Depends(get_current_user)) -> ApiKeyOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Use your session token to manage API keys.")
+    return generate_api_key(user)
+
+
+@app.delete("/me/api-key", status_code=204)
+def delete_api_key_route(user: CurrentUser = Depends(get_current_user)) -> None:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Use your session token to manage API keys.")
+    revoke_api_key(user)
+
+
 @app.get("/tasks", response_model=list[TaskOut])
 def list_tasks(user: CurrentUser = Depends(get_current_user)) -> list[TaskOut]:
     return [task_out(task) for task in TaskStore(user).list_active()]
@@ -114,7 +137,7 @@ def post_skip(task_id: str, user: CurrentUser = Depends(get_current_user)) -> No
 @app.get("/tasks/groups", response_model=list[TaskGroupOut])
 def get_groups(timezone_name: str = "UTC", user: CurrentUser = Depends(get_current_user)) -> list[TaskGroupOut]:
     return [
-        TaskGroupOut(label=group.label, overdue=group.overdue, tasks=[task_out(t) for t in group.tasks])
+        TaskGroupOut(label=group.label, overdue=group.overdue, tasks=[task_out(t) for t in group.tasks], has_more=group.has_more)
         for group in groups_for(user, timezone_name)
     ]
 
@@ -143,6 +166,8 @@ def post_availability_share(
     payload: AvailabilityShareCreate,
     user: CurrentUser = Depends(get_current_user),
 ) -> AvailabilityShareCreatedOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return create_share(user, payload)
 
 
@@ -158,6 +183,8 @@ def get_settings_endpoint(user: CurrentUser = Depends(get_current_user)) -> Sett
 
 @app.patch("/settings", response_model=SettingsOut)
 def patch_settings(payload: SettingsUpdate, user: CurrentUser = Depends(get_current_user)) -> SettingsOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return update_user_settings(user, payload)
 
 
@@ -194,6 +221,8 @@ def put_google_credentials(
     payload: GoogleCredentialsUpdate,
     user: CurrentUser = Depends(get_current_user),
 ) -> GoogleConnectUrlOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return GoogleConnectUrlOut(url=save_credentials(user, payload))
 
 
@@ -212,9 +241,13 @@ def post_google_sync(
     force: bool = False,
     user: CurrentUser = Depends(get_current_user),
 ) -> GoogleSyncOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return sync_google(user, force=force)
 
 
 @app.delete("/integrations/google", status_code=204)
 def delete_google(user: CurrentUser = Depends(get_current_user)) -> None:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     disconnect(user)

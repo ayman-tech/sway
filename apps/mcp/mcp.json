@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sway": {
+      "command": "uv",
+      "args": ["run", "--project", "apps/mcp", "sway-mcp"],
+      "env": {
+        "SWAY_API_URL": "http://localhost:8000",
+        "SWAY_API_KEY": ""
+      }
+    }
+  }
+}

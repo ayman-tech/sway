@@ -75,3 +75,8 @@ export type AvailabilityShare = {
   created_at: string;
   expires_at: string;
 };
+
+export type ApiKeyOut = {
+  key: string | null;
+  created_at: string | null;
+};

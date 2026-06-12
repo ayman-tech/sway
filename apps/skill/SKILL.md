@@ -37,7 +37,7 @@ Fill in your API key in `config.json` (distributed alongside this file):
 All requests go to:
 
 ```
-https://api.sway.aymanai.com
+http://localhost:8000/docs
 ```
 
 ## Authentication

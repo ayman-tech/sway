@@ -5,7 +5,8 @@ app:
 
 api:
 	uv run --project apps/api uvicorn api.main:app --reload --app-dir apps/api
-
+	# http://localhost:8000/docs
+	
 web:
 	npm --prefix apps/web run dev
 

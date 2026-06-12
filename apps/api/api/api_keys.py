@@ -16,11 +16,12 @@ _PREFIX = "sway_"
 def generate_api_key(user: CurrentUser) -> ApiKeyOut:
     raw = _PREFIX + secrets.token_hex(20)
     now = utc_now()
-    admin_client().table("user_settings").update({
+    admin_client().table("user_settings").upsert({
+        "user_id": user.id,
         "api_key_hash": hashlib.sha256(raw.encode()).hexdigest(),
         "api_key_ciphertext": encrypt_secret(raw),
         "api_key_created_at": now.isoformat(),
-    }).eq("user_id", user.id).execute()
+    }, on_conflict="user_id").execute()
     return ApiKeyOut(key=raw, created_at=now)
 
 

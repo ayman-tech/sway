@@ -166,6 +166,8 @@ def post_availability_share(
     payload: AvailabilityShareCreate,
     user: CurrentUser = Depends(get_current_user),
 ) -> AvailabilityShareCreatedOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return create_share(user, payload)
 
 
@@ -181,6 +183,8 @@ def get_settings_endpoint(user: CurrentUser = Depends(get_current_user)) -> Sett
 
 @app.patch("/settings", response_model=SettingsOut)
 def patch_settings(payload: SettingsUpdate, user: CurrentUser = Depends(get_current_user)) -> SettingsOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return update_user_settings(user, payload)
 
 
@@ -217,6 +221,8 @@ def put_google_credentials(
     payload: GoogleCredentialsUpdate,
     user: CurrentUser = Depends(get_current_user),
 ) -> GoogleConnectUrlOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return GoogleConnectUrlOut(url=save_credentials(user, payload))
 
 
@@ -235,9 +241,13 @@ def post_google_sync(
     force: bool = False,
     user: CurrentUser = Depends(get_current_user),
 ) -> GoogleSyncOut:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return sync_google(user, force=force)
 
 
 @app.delete("/integrations/google", status_code=204)
 def delete_google(user: CurrentUser = Depends(get_current_user)) -> None:
+    if user.is_api_key:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     disconnect(user)

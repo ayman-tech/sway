@@ -251,7 +251,10 @@ def active_groups(tasks: list[Task], timezone_name: str = "UTC") -> list[TaskGro
     week_end = today + timedelta(days=7)
     later_cutoff = today + timedelta(days=_LATER_HORIZON_DAYS)
     buckets: dict[str, list[Task]] = {"Overdue": [], "Today": [], "Next 7 Days": [], "Untimed": [], "Later": []}
-    later_overflow = 0
+    later_overflow = sum(
+        1 for t in tasks
+        if (due := _task_date(t, timezone_name)) is not None and due > later_cutoff
+    )
     for task in active_display_tasks(tasks, timezone_name):
         due = _task_date(task, timezone_name)
         if due is None:
@@ -262,10 +265,8 @@ def active_groups(tasks: list[Task], timezone_name: str = "UTC") -> list[TaskGro
             buckets["Today"].append(task)
         elif due <= week_end:
             buckets["Next 7 Days"].append(task)
-        elif due <= later_cutoff:
-            buckets["Later"].append(task)
         else:
-            later_overflow += 1
+            buckets["Later"].append(task)
     for name in ("Overdue", "Today", "Next 7 Days", "Later"):
         buckets[name].sort(
             key=lambda task: (

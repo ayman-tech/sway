@@ -48,6 +48,7 @@ class MainWindow(QWidget):
     tasksChanged = Signal()  # emitted after any task create/update/complete/delete
     signOutRequested = Signal()
     _googleResult = Signal(str, bool, object)
+    _apiKeyResult = Signal(object, object)  # (key | None, created_at | None)
 
     def __init__(
         self,
@@ -83,6 +84,7 @@ class MainWindow(QWidget):
             )
             self._sync.syncFinished.connect(self._on_sync_finished)
         self._googleResult.connect(self._on_google_result)
+        self._apiKeyResult.connect(self._settings_view.set_api_key)
         self.refresh()
         self._refresh_google_status()
         self._refresh_api_key()
@@ -166,7 +168,7 @@ class MainWindow(QWidget):
         def worker() -> None:
             try:
                 data = self._api_key_svc.get()
-                self._settings_view.set_api_key(data.get("key"), data.get("created_at"))
+                self._apiKeyResult.emit(data.get("key"), data.get("created_at"))
             except ApiKeyError:
                 pass
         threading.Thread(target=worker, daemon=True).start()
@@ -177,9 +179,9 @@ class MainWindow(QWidget):
         def worker() -> None:
             try:
                 data = self._api_key_svc.generate()
-                self._settings_view.set_api_key(data.get("key"), data.get("created_at"))
-            except ApiKeyError as exc:
-                self._settings_view.set_api_key(None)
+                self._apiKeyResult.emit(data.get("key"), data.get("created_at"))
+            except ApiKeyError:
+                self._apiKeyResult.emit(None, None)
         threading.Thread(target=worker, daemon=True).start()
 
     def _on_api_key_revoke(self) -> None:
@@ -188,7 +190,7 @@ class MainWindow(QWidget):
         def worker() -> None:
             try:
                 self._api_key_svc.revoke()
-                self._settings_view.set_api_key(None)
+                self._apiKeyResult.emit(None, None)
             except ApiKeyError:
                 pass
         threading.Thread(target=worker, daemon=True).start()

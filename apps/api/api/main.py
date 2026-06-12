@@ -61,7 +61,7 @@ app = FastAPI(title="Sway API")
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.web_public_url, "http://localhost:3000"],
+    allow_origins=[settings.web_public_url, "http://localhost:3010"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

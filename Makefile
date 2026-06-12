@@ -6,10 +6,10 @@ app:
 	uv run apps/desktop/main.py
 
 api:
-	uv run --project apps/api uvicorn api.main:app --reload --app-dir apps/api
+	uv run --project apps/api uvicorn api.main:app --reload --app-dir apps/api --port 8010
 
 web:
-	npm --prefix apps/web run dev
+	npm --prefix apps/web run dev -- -p 3010
 
 mcp:
 	uv run --project apps/mcp sway-mcp

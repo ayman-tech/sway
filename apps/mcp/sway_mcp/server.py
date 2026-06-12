@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from fastmcp import FastMCP
 
-_API_URL = os.environ.get("SWAY_API_URL", "http://localhost:8000").rstrip("/")
+_API_URL = os.environ.get("SWAY_API_URL", "http://localhost:8010").rstrip("/")
 _API_KEY = os.environ.get("SWAY_API_KEY", "")
 
 mcp = FastMCP("Sway")

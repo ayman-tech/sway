@@ -1,0 +1,16 @@
+[Unit]
+Description=Sway API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/sway
+ExecStart=/home/ubuntu/.local/bin/uv run --project apps/api uvicorn api.main:app --host 127.0.0.1 --port 8010 --workers 2 --app-dir apps/api
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

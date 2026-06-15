@@ -70,8 +70,8 @@ def get_settings() -> Settings:
     if not (url and key):
         raise RuntimeError("SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY are required.")
 
-    api_url = _normalize_public_url(os.environ.get("API_PUBLIC_URL", "http://localhost:8000"))
-    web_url = _normalize_public_url(os.environ.get("WEB_PUBLIC_URL", "http://localhost:3000"))
+    api_url = _normalize_public_url(os.environ.get("API_PUBLIC_URL", "http://localhost:8010"))
+    web_url = _normalize_public_url(os.environ.get("WEB_PUBLIC_URL", "http://localhost:3010"))
     return Settings(
         supabase_url=_normalize_public_url(url),
         supabase_key=key,

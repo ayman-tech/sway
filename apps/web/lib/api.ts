@@ -2,7 +2,7 @@
 
 import { supabase } from "@/lib/supabase";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010";
 
 async function errorMessage(res: Response) {
   const text = await res.text();

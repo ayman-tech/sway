@@ -19,6 +19,7 @@ from api.config import get_settings
 from api.schemas import GoogleCredentialsUpdate, GoogleStatusOut, GoogleSyncOut
 from api.secret_crypto import decrypt_secret, encrypt_secret, encryption_available
 from api.tasks import TaskStore
+from sway_core.constants import Source
 from sway_core.datetime_utils import from_iso, utc_now
 from sway_core.google import (
     GOOGLE_SCOPES,
@@ -262,14 +263,23 @@ def _import_google(user: CurrentUser, row: dict) -> tuple[int, dict[str, str]]:
     if not isinstance(tokens, dict):
         tokens = json.loads(tokens)
     changed = 0
+    seen_ids: set[str] = set()
+    full_import = True
 
     for calendar_id in _selected_calendars(service):
         sync_token = tokens.get(calendar_id)
+        if sync_token:
+            full_import = False
         page_token = None
         next_sync_token = None
         while True:
             if sync_token:
-                params = {"calendarId": calendar_id, "maxResults": 250, "syncToken": sync_token}
+                params = {
+                    "calendarId": calendar_id,
+                    "singleEvents": True,
+                    "maxResults": 250,
+                    "syncToken": sync_token,
+                }
             else:
                 time_min, time_max = google_import_window()
                 params = {
@@ -293,8 +303,9 @@ def _import_google(user: CurrentUser, row: dict) -> tuple[int, dict[str, str]]:
                 event_id = event.get("id")
                 if not event_id:
                     continue
+                task_id = task_id_for_google_event(user.id, event_id)
                 try:
-                    existing = store.get(task_id_for_google_event(user.id, event_id))
+                    existing = store.get(task_id)
                 except HTTPException:
                     existing = None
                 if event.get("status") == "cancelled":
@@ -302,6 +313,7 @@ def _import_google(user: CurrentUser, row: dict) -> tuple[int, dict[str, str]]:
                         store.upsert(existing.touched(deleted_at=utc_now()))
                         changed += 1
                     continue
+                seen_ids.add(task_id)
                 task = task_from_google_event(event, user.id, existing)
                 if task is not None and (
                     existing is None
@@ -320,6 +332,35 @@ def _import_google(user: CurrentUser, row: dict) -> tuple[int, dict[str, str]]:
                 break
         if next_sync_token:
             tokens[calendar_id] = next_sync_token
+
+    if full_import:
+        changed += _reconcile_deleted(store, seen_ids)
     return changed, tokens
+
+
+def _within_import_window(task, start, end) -> bool:
+    if task.due_at is not None:
+        return start <= task.due_at <= end
+    if task.due_date is not None:
+        return start.date() <= task.due_date <= end.date()
+    return False
+
+
+def _reconcile_deleted(store: TaskStore, seen_ids: set[str]) -> int:
+    """Mark Google-sourced tasks within the import window as deleted when the
+    underlying event no longer exists in Calendar (e.g. a deleted recurring
+    series whose cancellation was missed by an earlier sync)."""
+    start, end = (from_iso(value) for value in google_import_window())
+    removed = 0
+    for task in store.list_all():
+        if task.source != Source.GOOGLE or task.deleted_at is not None:
+            continue
+        if task.id in seen_ids:
+            continue
+        if not _within_import_window(task, start, end):
+            continue
+        store.upsert(task.touched(deleted_at=utc_now()))
+        removed += 1
+    return removed
 
 

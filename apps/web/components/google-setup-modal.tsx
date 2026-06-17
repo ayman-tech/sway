@@ -25,6 +25,7 @@ export function GoogleSetupModal({
     setId(clientId ?? "");
     setSecret("");
     setError("");
+    setSaving(false);
   }, [clientId, open]);
 
   if (!open) return null;

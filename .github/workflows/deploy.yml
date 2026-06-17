@@ -1,0 +1,48 @@
+name: Deploy
+
+# Rebuilds and redeploys the AWS instance whenever main is updated.
+# Runs `make deploy` on the server over SSH (git pull -> uv sync -> npm ci ->
+# build -> systemctl restart sway-api sway-web).
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   DEPLOY_HOST     public IP or hostname of the AWS instance
+#   DEPLOY_USER     SSH user (e.g. ubuntu)
+#   DEPLOY_SSH_KEY  private key whose public half is in the user's authorized_keys
+#   DEPLOY_PATH     absolute path to the repo checkout on the box
+#   DEPLOY_PORT     (optional) SSH port, defaults to 22
+#
+# The deploy user needs passwordless sudo for the restart, e.g. in
+# /etc/sudoers.d/sway:
+#   <user> ALL=(root) NOPASSWD: /usr/bin/systemctl restart sway-api sway-web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys run at once; let an in-progress one finish.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Deploy over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          port="${DEPLOY_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -e; cd '$DEPLOY_PATH' && make deploy"

@@ -1,8 +1,7 @@
 name: Deploy
 
 # Rebuilds and redeploys the AWS instance whenever main is updated.
-# Runs `make deploy` on the server over SSH (git pull -> uv sync -> npm ci ->
-# build -> systemctl restart sway-api sway-web).
+# Runs `make deploy` through a login shell on the server over SSH
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
 #   DEPLOY_HOST     public IP or hostname of the AWS instance
@@ -45,4 +44,4 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/deploy_key -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -e; cd '$DEPLOY_PATH' && make deploy"
+            "bash -lc 'set -e; cd \"$DEPLOY_PATH\" && make deploy'"

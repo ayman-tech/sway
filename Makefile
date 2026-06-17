@@ -24,7 +24,8 @@ build-web:
 	npm --prefix apps/web run build
 
 deploy:
-	git pull
+	git checkout main -f
+	git pull origin main
 	uv sync --project apps/api
 	npm --prefix apps/web ci
 	npm --prefix apps/web run build

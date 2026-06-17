@@ -25,3 +25,4 @@ npm-debug.log*
 dev-plans/
 tests/*
 .DS_Store
+CLAUDE.md

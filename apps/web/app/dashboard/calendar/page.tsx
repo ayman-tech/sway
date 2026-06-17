@@ -3,10 +3,11 @@
 import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameDay, startOfMonth, startOfWeek, subMonths } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { Task } from "@/lib/types";
 import { LinkedText } from "@/components/linked-text";
+import { TaskEditorModal, type TaskEditorPayload } from "@/components/task-editor-modal";
 
 function compareCalendarTasks(a: Task, b: Task) {
   if (Boolean(a.due_at) !== Boolean(b.due_at)) return a.due_at ? -1 : 1;
@@ -17,9 +18,16 @@ function compareCalendarTasks(a: Task, b: Task) {
 }
 
 export default function CalendarPage() {
+  const qc = useQueryClient();
   const [month, setMonth] = useState(() => new Date());
   const [selected, setSelected] = useState(() => new Date());
+  const [editing, setEditing] = useState<Task | null>(null);
   const today = useMemo(() => new Date(), []);
+  const update = useMutation({
+    mutationFn: ({ task, payload }: { task: Task; payload: Partial<TaskEditorPayload> }) =>
+      api<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+  });
   const range = useMemo(() => {
     const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
     const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
@@ -111,23 +119,37 @@ export default function CalendarPage() {
         <div className="mt-4 space-y-3">
           {selectedTasks.length ? (
             selectedTasks.map((task) => (
-              <div className="min-w-0 rounded-lg border border-[#e6ded2] bg-white p-3" key={`${task.id}-${task.due_at ?? task.due_date}`}>
+              <button
+                className="min-w-0 w-full rounded-lg border border-[#e6ded2] bg-white p-3 text-left hover:border-[#c9bfb3] transition-colors"
+                key={`${task.id}-${task.due_at ?? task.due_date}`}
+                onClick={() => setEditing(task)}
+              >
                 <p className="break-words font-black">{task.title}</p>
                 {task.description ? (
-                  <p className="mt-1 min-w-0 whitespace-pre-wrap break-words text-sm text-[#667085] [overflow-wrap:anywhere]">
-                    <LinkedText text={task.description} />
+                  <p className="mt-1 truncate text-sm text-[#667085]">
+                    <LinkedText text={task.description.split("\n")[0]} />
                   </p>
                 ) : null}
                 <p className="mt-1 text-sm text-[#667085]">
                   {task.due_at ? new Date(task.due_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "All day"}
                 </p>
-              </div>
+              </button>
             ))
           ) : (
             <p className="text-[#667085]">No tasks for this day.</p>
           )}
         </div>
       </aside>
+      <TaskEditorModal
+        mode="edit"
+        onClose={() => setEditing(null)}
+        onSave={(payload) => {
+          if (!editing) return Promise.resolve();
+          return update.mutateAsync({ task: editing, payload });
+        }}
+        open={Boolean(editing)}
+        task={editing}
+      />
     </section>
   );
 }

@@ -37,15 +37,39 @@ sync/backup layer; Google Calendar is a read-only integration — never the sour
 
 ## Architecture
 
-```
-        PySide6 UI  (list · calendar · completed · settings · auth)
-                              │
-        Services  (TaskService · ReminderService · SyncService ·
-                   AuthService · centralized Google API client)
-                              │
-        Repositories  (SqliteRepo · SupabaseRepo · SettingsRepo)
-              │                        │
-          SQLite (local)        Supabase (cloud) ← FastAPI ← Google Calendar
+```mermaid
+graph TD
+    subgraph desktop["apps/desktop (PySide6, offline-first)"]
+        UI["app/ui/\nlist · calendar · completed · settings · auth"]
+        SVC["app/services/\nTaskService · ReminderService · SyncService\nAuthService · GoogleApiService"]
+        REPO["app/repositories/\nSqliteRepo · SupabaseRepo · SettingsRepo"]
+        SQLITE[("SQLite\n(local)")]
+        UI --> SVC --> REPO --> SQLITE
+    end
+
+    subgraph web["apps/web (Next.js 16)"]
+        PAGES["app/dashboard/\nApp Router pages"]
+        LIBAPI["lib/api.ts · TanStack Query"]
+        PAGES --> LIBAPI
+    end
+
+    subgraph api["apps/api (FastAPI :8010)"]
+        ROUTES["tasks · google_integration · settings · reminders"]
+    end
+
+    subgraph core["packages/core (sway-core)"]
+        CORE["models · google · reminders · scheduling"]
+    end
+
+    SUPABASE[("Supabase\nPostgres + RLS")]
+    GCAL["Google Calendar\n(read-only import)"]
+
+    REPO -- "cloud sync · last-write-wins" --> SUPABASE
+    LIBAPI -- "Bearer JWT" --> ROUTES
+    ROUTES --> SUPABASE
+    ROUTES --> GCAL
+    core -. "editable dep" .-> desktop
+    core -. "editable dep" .-> api
 ```
 
 - UI never touches the database directly — it goes through services.

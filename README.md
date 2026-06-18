@@ -21,88 +21,6 @@ sync/backup layer; Google Calendar is a read-only integration — never the sour
   into Sway; Meet link + location are prepended to the description; events can be checked off locally.
 - **Dark / light theme**, **start-at-login**, and a packaged **`Sway.app`** for macOS.
 
-## Tech stack
-
-| Layer | Choice |
-|---|---|
-| Desktop UI | PySide6 (Qt for Python) |
-| Web UI | Next.js + TypeScript + Tailwind |
-| API | FastAPI |
-| Shared logic | `packages/core` (`sway-core`) |
-| Local store | SQLite (offline-first) |
-| Cloud backend | Supabase (Postgres + Auth + Row-Level Security) |
-| Calendar | Google Calendar API (read-only import) |
-| Scheduling | QTimer-based reminder polling |
-| Packaging | PyInstaller (`Sway.app`) |
-
-## Architecture
-
-```mermaid
-graph TD
-    subgraph desktop["apps/desktop (PySide6, offline-first)"]
-        UI["app/ui/\nlist · calendar · completed · settings · auth"]
-        SVC["app/services/\nTaskService · ReminderService · SyncService\nAuthService · GoogleApiService"]
-        REPO["app/repositories/\nSqliteRepo · SupabaseRepo · SettingsRepo"]
-        SQLITE[("SQLite\n(local)")]
-        UI --> SVC --> REPO --> SQLITE
-    end
-
-    subgraph web["apps/web (Next.js 16)"]
-        PAGES["app/dashboard/\nApp Router pages"]
-        LIBAPI["lib/api.ts · TanStack Query"]
-        PAGES --> LIBAPI
-    end
-
-    subgraph api["apps/api (FastAPI :8010)"]
-        ROUTES["tasks · google_integration · settings · reminders"]
-    end
-
-    subgraph core["packages/core (sway-core)"]
-        CORE["models · google · reminders · scheduling"]
-    end
-
-    SUPABASE[("Supabase\nPostgres + RLS")]
-    GCAL["Google Calendar\n(read-only import)"]
-
-    REPO -- "cloud sync · last-write-wins" --> SUPABASE
-    LIBAPI -- "Bearer JWT" --> ROUTES
-    ROUTES --> SUPABASE
-    ROUTES --> GCAL
-    core -. "editable dep" .-> desktop
-    core -. "editable dep" .-> api
-```
-
-- UI never touches the database directly — it goes through services.
-- All datetimes are stored in **UTC**; the UI converts to local time.
-- Deletes are **soft** (`deleted_at`); every local change is marked for sync.
-- Cloud sync is **last-write-wins** by a **server-set** `updated_at` (a Postgres trigger), with a
-  small pull-overlap window so updates can't be missed.
-
-## Project layout
-
-```
-apps/
-  desktop/                 PySide6 desktop app
-    app/
-      ui/                  windows, views, dialogs, components, theme
-      services/            task / reminder / sync / auth / google calendar / recurrence
-      repositories/        sqlite, supabase, settings
-      models/              Task dataclass
-      db/                  database.py + schema.sql (local)
-      notifications/       tray icon + notifier
-      utils/               datetime, ids, logging, resources, autostart
-      assets/styles/       dark.qss, light.qss
-    packaging/             build_macos.sh, icon.icns
-    main.py                desktop entry point
-    pyproject.toml         desktop Python dependencies
-  api/                     FastAPI backend for the web app
-  web/                     Next.js + TypeScript web app
-packages/
-  core/                    shared Python task/domain logic
-supabase/                  shared cloud schema + RLS
-README.md                  shared product documentation
-```
-
 ## Getting started
 
 **Prerequisites:** Python 3.12+ and [uv](https://docs.astral.sh/uv/).
@@ -200,6 +118,88 @@ code-sign + notarize it with an Apple Developer ID (it runs locally without that
   `supabase/schema.sql`, and sync Google Calendar to repopulate imported events.
 - **Destructive development reset:** run `supabase/reset_all.sql`, then `supabase/schema.sql`;
   delete the desktop `sway.db` before restarting the app.
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Desktop UI | PySide6 (Qt for Python) |
+| Web UI | Next.js + TypeScript + Tailwind |
+| API | FastAPI |
+| Shared logic | `packages/core` (`sway-core`) |
+| Local store | SQLite (offline-first) |
+| Cloud backend | Supabase (Postgres + Auth + Row-Level Security) |
+| Calendar | Google Calendar API (read-only import) |
+| Scheduling | QTimer-based reminder polling |
+| Packaging | PyInstaller (`Sway.app`) |
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph desktop["apps/desktop (PySide6, offline-first)"]
+        UI["app/ui/\nlist · calendar · completed · settings · auth"]
+        SVC["app/services/\nTaskService · ReminderService · SyncService\nAuthService · GoogleApiService"]
+        REPO["app/repositories/\nSqliteRepo · SupabaseRepo · SettingsRepo"]
+        SQLITE[("SQLite\n(local)")]
+        UI --> SVC --> REPO --> SQLITE
+    end
+
+    subgraph web["apps/web (Next.js 16)"]
+        PAGES["app/dashboard/\nApp Router pages"]
+        LIBAPI["lib/api.ts · TanStack Query"]
+        PAGES --> LIBAPI
+    end
+
+    subgraph api["apps/api (FastAPI :8010)"]
+        ROUTES["tasks · google_integration · settings · reminders"]
+    end
+
+    subgraph core["packages/core (sway-core)"]
+        CORE["models · google · reminders · scheduling"]
+    end
+
+    SUPABASE[("Supabase\nPostgres + RLS")]
+    GCAL["Google Calendar\n(read-only import)"]
+
+    REPO -- "cloud sync · last-write-wins" --> SUPABASE
+    LIBAPI -- "Bearer JWT" --> ROUTES
+    ROUTES --> SUPABASE
+    ROUTES --> GCAL
+    core -. "editable dep" .-> desktop
+    core -. "editable dep" .-> api
+```
+
+- UI never touches the database directly — it goes through services.
+- All datetimes are stored in **UTC**; the UI converts to local time.
+- Deletes are **soft** (`deleted_at`); every local change is marked for sync.
+- Cloud sync is **last-write-wins** by a **server-set** `updated_at` (a Postgres trigger), with a
+  small pull-overlap window so updates can't be missed.
+
+## Project layout
+
+```
+apps/
+  desktop/                 PySide6 desktop app
+    app/
+      ui/                  windows, views, dialogs, components, theme
+      services/            task / reminder / sync / auth / google calendar / recurrence
+      repositories/        sqlite, supabase, settings
+      models/              Task dataclass
+      db/                  database.py + schema.sql (local)
+      notifications/       tray icon + notifier
+      utils/               datetime, ids, logging, resources, autostart
+      assets/styles/       dark.qss, light.qss
+    packaging/             build_macos.sh, icon.icns
+    main.py                desktop entry point
+    pyproject.toml         desktop Python dependencies
+  api/                     FastAPI backend for the web app
+  web/                     Next.js + TypeScript web app
+packages/
+  core/                    shared Python task/domain logic
+supabase/                  shared cloud schema + RLS
+README.md                  shared product documentation
+```
 
 ## Notes & limitations
 

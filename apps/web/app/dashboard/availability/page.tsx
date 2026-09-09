@@ -26,6 +26,7 @@ import {
   toDateIso,
 } from "@/lib/availability";
 import { AvailabilityGrid, AvailabilityLegend } from "@/components/availability-grid";
+import { OverflowMenu } from "@/components/overflow-menu";
 
 type AvailabilitySetup = {
   selectedDates: string[];
@@ -379,10 +380,10 @@ export default function AvailabilityPage() {
 
   return (
     <section>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 lg:mb-5">
         <div>
-          <h1 className="text-3xl font-black">Availability</h1>
-          <p className="mt-1 text-[#667085]">
+          <h1 className="hidden text-3xl font-black lg:block">Availability</h1>
+          <p className="text-sm text-[#667085] lg:mt-1 lg:text-base">
             Click or drag to pick dates, then mark your free hours. Timed tasks show as busy blocks.
           </p>
         </div>
@@ -397,11 +398,11 @@ export default function AvailabilityPage() {
         <div className="grid gap-5 xl:grid-cols-[minmax(360px,640px)_360px]">
           <div className="panel overflow-hidden">
             <div className="flex items-center justify-between border-b border-[#dfd7ca] bg-white px-4 py-3">
-              <button className="btn btn-secondary min-w-10 px-2" onClick={() => setMonth(subMonths(month, 1))}>
+              <button aria-label="Previous month" className="btn btn-secondary min-w-11 px-2" onClick={() => setMonth(subMonths(month, 1))}>
                 <ChevronLeft size={18} />
               </button>
               <h2 className="text-lg font-black">{format(month, "MMMM yyyy")}</h2>
-              <button className="btn btn-secondary min-w-10 px-2" onClick={() => setMonth(addMonths(month, 1))}>
+              <button aria-label="Next month" className="btn btn-secondary min-w-11 px-2" onClick={() => setMonth(addMonths(month, 1))}>
                 <ChevronRight size={18} />
               </button>
             </div>
@@ -413,8 +414,9 @@ export default function AvailabilityPage() {
               ref={dateGridRef}
             >
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-                <div className="border-b border-[#dfd7ca] p-3 text-center text-sm font-black text-[#667085]" key={day}>
-                  {day}
+                <div className="border-b border-[#dfd7ca] p-2 text-center text-xs font-bold text-[#667085] lg:p-3 lg:text-sm lg:font-black" key={day}>
+                  <span className="calendar-weekday-short">{day[0]}</span>
+                  <span className="calendar-weekday-long">{day}</span>
                 </div>
               ))}
               {days.map((day) => {
@@ -450,6 +452,7 @@ export default function AvailabilityPage() {
             <p className="mt-1 text-sm text-[#667085]">{selectedLabel(setupDraft.selectedDates)}</p>
             <div className="mt-4 grid gap-3">
               <select
+                aria-label="Availability start time"
                 className="field"
                 onChange={(event) => setSetupDraft((current) => ({ ...current, startHour: Number(event.target.value) }))}
                 value={setupDraft.startHour}
@@ -462,6 +465,7 @@ export default function AvailabilityPage() {
                 ))}
               </select>
               <select
+                aria-label="Availability end time"
                 className="field"
                 onChange={(event) => setSetupDraft((current) => ({ ...current, endHour: Number(event.target.value) }))}
                 value={setupDraft.endHour}
@@ -473,7 +477,7 @@ export default function AvailabilityPage() {
                   </option>
                 ))}
               </select>
-              <button className="btn btn-primary" onClick={confirmSetup}>
+              <button className="availability-setup-primary btn btn-primary" onClick={confirmSetup}>
                 View availability
               </button>
               {message ? <p className="rounded-lg bg-[#fff2e8] px-3 py-2 text-sm font-bold text-[#9a3412]">{message}</p> : null}
@@ -483,19 +487,34 @@ export default function AvailabilityPage() {
       ) : setup ? (
         <div className="grid gap-4">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="mr-auto font-bold text-[#667085]">
+            <p className="w-full text-sm font-bold text-[#667085] lg:mr-auto lg:w-auto lg:text-base">
               {selectedLabel(setup.selectedDates)} · {hourLabel(setup.startHour)} to {hourLabel(setup.endHour)}
             </p>
-            <button className="btn btn-secondary" onClick={copySummary}>
-              <Copy size={17} /> Copy summary
-            </button>
-            <button className="btn btn-secondary" disabled={createShare.isPending} onClick={shareAvailability}>
-              {createShare.isPending ? <Loader2 className="animate-spin" size={17} /> : <Share2 size={17} />}
-              Share link
-            </button>
-            <button className="btn btn-secondary" onClick={downloadHtml}>
-              <Download size={17} /> Export HTML
-            </button>
+            <div className="hidden gap-2 lg:flex">
+              <button className="btn btn-secondary" onClick={copySummary}>
+                <Copy size={17} /> Copy summary
+              </button>
+              <button className="btn btn-secondary" disabled={createShare.isPending} onClick={shareAvailability}>
+                {createShare.isPending ? <Loader2 className="animate-spin" size={17} /> : <Share2 size={17} />}
+                Share link
+              </button>
+              <button className="btn btn-secondary" onClick={downloadHtml}>
+                <Download size={17} /> Export HTML
+              </button>
+            </div>
+            <div className="flex w-full gap-2 lg:hidden">
+              <button className="btn btn-primary flex-1" disabled={createShare.isPending} onClick={shareAvailability}>
+                {createShare.isPending ? <Loader2 className="animate-spin" size={17} /> : <Share2 size={17} />}
+                Share link
+              </button>
+              <OverflowMenu
+                actions={[
+                  { label: "Copy summary", icon: Copy, onSelect: copySummary },
+                  { label: "Export HTML", icon: Download, onSelect: downloadHtml },
+                ]}
+                label="More availability actions"
+              />
+            </div>
           </div>
           {message ? <p className="text-sm font-bold text-[#667085]">{message}</p> : null}
           {shareResult ? (

@@ -66,24 +66,25 @@ export default function CalendarPage() {
   return (
     <section className="grid gap-6 xl:grid-cols-[1fr_360px]">
       <div>
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between lg:mb-5">
           <div>
-            <h1 className="text-3xl font-black">Calendar</h1>
-            <p className="mt-1 text-[#667085]">{format(month, "MMMM yyyy")}</p>
+            <h1 className="hidden text-3xl font-black lg:block">Calendar</h1>
+            <p className="text-lg font-bold text-[var(--foreground)] lg:mt-1 lg:text-base lg:font-normal lg:text-[#667085]">{format(month, "MMMM yyyy")}</p>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-secondary min-w-10 px-2" onClick={() => setMonth(subMonths(month, 1))}>
+            <button aria-label="Previous month" className="btn btn-secondary min-w-11 px-2" onClick={() => setMonth(subMonths(month, 1))}>
               <ChevronLeft size={18} />
             </button>
-            <button className="btn btn-secondary min-w-10 px-2" onClick={() => setMonth(addMonths(month, 1))}>
+            <button aria-label="Next month" className="btn btn-secondary min-w-11 px-2" onClick={() => setMonth(addMonths(month, 1))}>
               <ChevronRight size={18} />
             </button>
           </div>
         </div>
-        <div className="panel grid grid-cols-7 overflow-hidden">
+        <div className="calendar-grid panel grid grid-cols-7 overflow-hidden">
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-            <div className="border-b border-[#dfd7ca] bg-white p-3 text-sm font-black text-[#667085]" key={day}>
-              {day}
+            <div className="border-b border-[#dfd7ca] bg-white p-2 text-center text-xs font-bold text-[#667085] lg:p-3 lg:text-left lg:text-sm lg:font-black" key={day}>
+              <span className="calendar-weekday-short">{day[0]}</span>
+              <span className="calendar-weekday-long">{day}</span>
             </div>
           ))}
           {days.map((day) => {
@@ -92,14 +93,22 @@ export default function CalendarPage() {
             const isToday = isSameDay(day, today);
             return (
               <button
-                className={`min-h-28 border-b border-r border-[#eee6da] p-2 text-left ${
+                aria-label={`${format(day, "EEEE, MMMM d")}, ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}`}
+                className={`calendar-day border-b border-r border-[#eee6da] ${
                   active ? "calendar-day-selected" : "bg-white"
                 } ${isToday ? "calendar-day-today" : ""}`}
                 key={day.toISOString()}
                 onClick={() => setSelected(day)}
               >
                 <span className="font-black">{format(day, "d")}</span>
-                <div className="mt-2 space-y-1">
+                <div aria-hidden="true" className="calendar-mobile-markers lg:hidden">
+                  {tasks.length > 3 ? (
+                    <span className="calendar-mobile-count">{tasks.length}</span>
+                  ) : (
+                    tasks.map((task) => <span key={`${task.id}-marker`} />)
+                  )}
+                </div>
+                <div className="mt-2 hidden space-y-1 lg:block">
                   {tasks.slice(0, 3).map((task) => (
                     <p
                       className="truncate rounded bg-[#f2f4f7] px-2 py-1 text-xs font-bold"

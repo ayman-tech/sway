@@ -96,12 +96,12 @@ export default function SettingsPage() {
   });
 
   return (
-    <section className="max-w-3xl space-y-6">
-      <div>
+    <section className="max-w-3xl space-y-4 lg:space-y-6">
+      <div className="hidden lg:block">
         <h1 className="text-3xl font-black">Settings</h1>
         <p className="mt-1 text-[#667085]">Configure the web app experience.</p>
       </div>
-      <div className="panel p-5">
+      <div className="panel p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">
           <UserRound size={20} /> Profile
         </h2>
@@ -110,6 +110,7 @@ export default function SettingsPage() {
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <input
+            aria-label="First name"
             className="field"
             maxLength={80}
             onChange={(event) => setFirstName(event.target.value)}
@@ -117,6 +118,7 @@ export default function SettingsPage() {
             value={firstName}
           />
           <input
+            aria-label="Last name"
             className="field"
             maxLength={80}
             onChange={(event) => setLastName(event.target.value)}
@@ -125,20 +127,21 @@ export default function SettingsPage() {
           />
         </div>
         <button
-          className="btn btn-primary mt-4"
+          className="btn btn-primary mobile-full mt-4"
           disabled={patchSettings.isPending}
           onClick={() => patchSettings.mutate({ first_name: firstName.trim() || null, last_name: lastName.trim() || null })}
         >
           <Save size={18} /> Save profile
         </button>
       </div>
-      <div className="panel p-5">
+      <div className="panel p-4 lg:p-5">
         <h2 className="text-xl font-black">Theme</h2>
         <p className="mt-2 text-[var(--muted)]">
           System follows your browser setting. Current active theme: {resolvedTheme}.
         </p>
         <select
-          className="field mt-4 max-w-xs"
+          aria-label="Theme"
+          className="field mt-4 lg:max-w-xs"
           onChange={(event) => {
             const next = event.target.value as ThemePreference;
             setTheme(next);
@@ -151,13 +154,13 @@ export default function SettingsPage() {
           <option value="dark">Dark</option>
         </select>
       </div>
-      <div className="panel p-5">
+      <div className="panel p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">
           <Bell size={20} /> Browser notifications
         </h2>
         <p className="mt-2 text-[#667085]">Reminders can show browser notifications while the web app is open.</p>
         <button
-          className="btn btn-secondary mt-4"
+          className="btn btn-secondary mobile-full mt-4"
           onClick={async () => {
             if ("Notification" in window) {
               const permission = await Notification.requestPermission();
@@ -168,7 +171,7 @@ export default function SettingsPage() {
           Enable notifications
         </button>
       </div>
-      <div className="panel p-5">
+      <div className="panel p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">
           <CalendarDays size={20} /> Google Calendar
         </h2>
@@ -180,7 +183,7 @@ export default function SettingsPage() {
         ) : null}
         {google?.last_sync_error ? <p className="mt-2 text-sm font-bold text-[#b42318]">{google.last_sync_error}</p> : null}
         {googleMessage ? <p className="mt-2 text-sm font-bold text-[var(--muted)]">{googleMessage}</p> : null}
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mobile-action-row mt-4 flex flex-wrap gap-3">
           {google?.connected ? (
             <>
               <button className="btn btn-primary" onClick={() => syncGoogle.mutate()}>
@@ -207,7 +210,7 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
-      <div className="panel p-5">
+      <div className="panel p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">
           <KeyRound size={20} /> Sway API Key
         </h2>
@@ -219,8 +222,8 @@ export default function SettingsPage() {
             <p className="mt-2 text-sm text-[var(--muted)]">
               Created {apiKey.created_at ? new Date(apiKey.created_at).toLocaleDateString() : "—"}.
             </p>
-            <div className="mt-3 flex gap-2">
-              <input className="field font-mono text-sm" readOnly value={apiKey.key} />
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input aria-label="Sway API key" className="field min-w-0 font-mono text-sm" readOnly value={apiKey.key} />
               <button className="btn btn-secondary px-3" onClick={copyApiKey} title="Copy API key">
                 {apiKeyCopied ? <Check size={17} /> : <Copy size={17} />}
               </button>
@@ -229,7 +232,7 @@ export default function SettingsPage() {
         ) : (
           <p className="mt-2 text-sm text-[var(--muted)]">No key generated yet.</p>
         )}
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mobile-action-row mt-4 flex flex-wrap gap-3">
           <button
             className="btn btn-primary"
             disabled={generateKey.isPending}

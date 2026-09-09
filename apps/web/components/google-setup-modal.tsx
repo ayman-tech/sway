@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Copy, Loader2, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { useDialogBehavior } from "@/components/use-dialog-behavior";
 
 export function GoogleSetupModal({
   clientId,
@@ -19,6 +20,7 @@ export function GoogleSetupModal({
   const [secret, setSecret] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const dialogRef = useDialogBehavior<HTMLFormElement>(open, onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -51,16 +53,29 @@ export function GoogleSetupModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-8">
-      <form className="panel max-h-[92vh] w-full max-w-[560px] overflow-auto p-5 shadow-2xl" onSubmit={submit}>
+    <div
+      className="responsive-dialog-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <form
+        aria-labelledby="google-setup-title"
+        aria-modal="true"
+        className="responsive-dialog-surface max-w-[560px] p-5"
+        onSubmit={submit}
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black">Set up Google Calendar</h2>
+            <h2 className="text-xl font-black" id="google-setup-title">Set up Google Calendar</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
               Create an OAuth client of type Web application in Google Cloud, then paste its credentials here.
             </p>
           </div>
-          <button className="btn btn-secondary min-w-10 px-2" onClick={onClose} type="button">
+          <button aria-label="Close Google setup" className="icon-button" onClick={onClose} type="button">
             <X size={18} />
           </button>
         </div>
@@ -90,6 +105,7 @@ export function GoogleSetupModal({
           <input
             autoComplete="off"
             className="field mt-1"
+            data-dialog-initial-focus
             onChange={(event) => setId(event.target.value)}
             placeholder="xxxx.apps.googleusercontent.com"
             value={id}
@@ -107,7 +123,7 @@ export function GoogleSetupModal({
           />
         </label>
         {error ? <p className="mt-3 text-sm font-bold text-[#b42318]">{error}</p> : null}
-        <div className="mt-5 flex justify-end gap-3">
+        <div className="dialog-actions flex justify-end gap-3">
           <button className="btn btn-secondary" onClick={onClose} type="button">Cancel</button>
           <button className="btn btn-primary" disabled={saving} type="submit">
             {saving ? <Loader2 className="animate-spin" size={18} /> : null}

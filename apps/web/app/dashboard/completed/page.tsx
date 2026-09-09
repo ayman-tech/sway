@@ -20,26 +20,26 @@ export default function CompletedPage() {
   });
 
   return (
-    <section className="space-y-6">
-      <div>
+    <section className="space-y-5 lg:space-y-6">
+      <div className="hidden lg:block">
         <h1 className="text-3xl font-black">Completed</h1>
         <p className="mt-1 text-[#667085]">Recently completed tasks are kept for 30 days.</p>
       </div>
       {isLoading ? <p className="text-[#667085]">Loading completed tasks...</p> : null}
       {(data ?? []).map((group) => (
         <section key={group.label}>
-          <h2 className="mb-3 text-xl font-black">{group.label}</h2>
-          <div className="space-y-3">
+          <h2 className="mb-2.5 text-lg font-bold lg:mb-3 lg:text-xl lg:font-black">{group.label}</h2>
+          <div className="space-y-2.5 lg:space-y-3">
             {group.tasks.map((task) => (
-              <article className="rounded-lg border border-[#e6ded2] bg-white p-4" key={task.id}>
+              <article className="rounded-xl border border-[#e6ded2] bg-white p-3 lg:p-4" key={task.id}>
                 <div className="flex items-center justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <h3 className="font-black line-through decoration-[#98a2b3]">{task.title}</h3>
                     <p className="mt-1 text-sm text-[#667085]">
                       {task.completed_at ? new Date(task.completed_at).toLocaleString() : "Completed"}
                     </p>
                   </div>
-                  <button className="btn btn-secondary" onClick={() => uncomplete.mutate(task)}>
+                  <button aria-label={`Restore ${task.title}`} className="btn btn-secondary shrink-0" onClick={() => uncomplete.mutate(task)}>
                     <RotateCcw size={18} /> Restore
                   </button>
                 </div>

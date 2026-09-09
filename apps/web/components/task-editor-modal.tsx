@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { Task } from "@/lib/types";
+import { useDialogBehavior } from "@/components/use-dialog-behavior";
 
 export type TaskEditorPayload = {
   title: string;
@@ -125,6 +126,7 @@ export function TaskEditorModal({
   const [repeatUntil, setRepeatUntil] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const dialogRef = useDialogBehavior<HTMLFormElement>(open, onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -137,6 +139,7 @@ export function TaskEditorModal({
     setRepeat(repeatBase(task?.recurrence_rule));
     setRepeatUntil(repeatUntilValue(task?.recurrence_rule, task?.recurrence_timezone));
     setError("");
+    setSaving(false);
   }, [open, task]);
 
   if (!open) return null;
@@ -186,11 +189,24 @@ export function TaskEditorModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-8">
-      <form className="panel task-editor max-h-[92vh] w-full max-w-[460px] overflow-auto p-5 shadow-2xl" onSubmit={submit}>
+    <div
+      className="responsive-dialog-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <form
+        aria-labelledby="task-editor-title"
+        aria-modal="true"
+        className="responsive-dialog-surface task-editor max-w-[460px] p-5"
+        onSubmit={submit}
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+      >
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black">
+            <h2 className="text-xl font-black" id="task-editor-title">
               {mode === "create" ? "New Task" : readOnly ? "Google Calendar event" : "Edit Task"}
             </h2>
             {task?.source === "google" ? (
@@ -199,7 +215,7 @@ export function TaskEditorModal({
               </p>
             ) : null}
           </div>
-          <button className="btn btn-secondary min-w-10 px-2" onClick={onClose} type="button">
+          <button aria-label="Close task editor" className="icon-button" onClick={onClose} type="button">
             <X size={18} />
           </button>
         </div>
@@ -207,7 +223,9 @@ export function TaskEditorModal({
         <div className="space-y-2">
           <label className="block">
             <input
+              aria-label="Task title"
               className="field"
+              data-dialog-initial-focus={!readOnly ? true : undefined}
               disabled={readOnly}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Title"
@@ -217,6 +235,7 @@ export function TaskEditorModal({
           </label>
           <label className="block">
             <textarea
+              aria-label="Task notes"
               className="field task-editor-notes resize-y"
               disabled={readOnly}
               onChange={(event) => setDescription(event.target.value)}
@@ -224,15 +243,15 @@ export function TaskEditorModal({
               value={description}
             />
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="task-editor-grid grid grid-cols-2 gap-2">
             <label className="block">
-              <input className="field" disabled={readOnly} onChange={(event) => setDate(event.target.value)} type="date" value={date} />
+              <input aria-label="Due date" className="field" disabled={readOnly} onChange={(event) => setDate(event.target.value)} type="date" value={date} />
             </label>
             <label className="block">
-              <input className="field" disabled={readOnly || !date} onChange={(event) => setTime(event.target.value)} type="time" value={time} />
+              <input aria-label="Due time" className="field" disabled={readOnly || !date} onChange={(event) => setTime(event.target.value)} type="time" value={time} />
             </label>
             <label className="block">
-              <select className="field" disabled={readOnly || !date || !time} onChange={(event) => setDuration(event.target.value)} value={duration}>
+              <select aria-label="Task duration" className="field" disabled={readOnly || !date || !time} onChange={(event) => setDuration(event.target.value)} value={duration}>
                 {durationOptions.map(([label, value]) => (
                   <option key={label} value={value}>
                     {label}
@@ -241,7 +260,7 @@ export function TaskEditorModal({
               </select>
             </label>
             <label className="block">
-              <select className="field" disabled={(!date || !time) && !allowReminderOnly} onChange={(event) => setReminder(event.target.value)} value={reminder}>
+              <select aria-label="Reminder" className="field" disabled={(!date || !time) && !allowReminderOnly} onChange={(event) => setReminder(event.target.value)} value={reminder}>
                 {reminderOptions.map(([label, value]) => (
                   <option key={label} value={value}>
                     {label}
@@ -250,7 +269,7 @@ export function TaskEditorModal({
               </select>
             </label>
             <label className="block">
-              <select className="field" disabled={readOnly || !date} onChange={(event) => setRepeat(event.target.value)} value={repeat}>
+              <select aria-label="Repeat schedule" className="field" disabled={readOnly || !date} onChange={(event) => setRepeat(event.target.value)} value={repeat}>
                 {repeatOptions.map(([label, value]) => (
                   <option key={label} value={value}>
                     {label}
@@ -260,6 +279,7 @@ export function TaskEditorModal({
             </label>
             <label className="block">
               <input
+                aria-label="Repeat until"
                 className="field"
                 disabled={readOnly || !repeat}
                 onChange={(event) => setRepeatUntil(event.target.value)}
@@ -273,7 +293,7 @@ export function TaskEditorModal({
 
         {error ? <p className="mt-4 rounded-lg bg-[#fff2e8] p-3 text-sm font-bold text-[#9a3412]">{error}</p> : null}
 
-        <div className="mt-5 flex flex-wrap justify-end gap-3">
+        <div className="dialog-actions flex flex-wrap justify-end gap-3">
           <button className="btn btn-secondary" onClick={onClose} type="button">
             Cancel
           </button>

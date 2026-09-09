@@ -34,18 +34,24 @@ export default function TasksPage() {
   });
 
   return (
-    <section className="space-y-6">
-      <div>
+    <section className="space-y-5 lg:space-y-6">
+      <div className="hidden lg:block">
         <h1 className="text-3xl font-black">Tasks</h1>
         <p className="mt-1 text-[var(--muted)]">Create, complete, and organize your active work.</p>
       </div>
       {isLoading ? <p className="text-[var(--muted)]">Loading tasks...</p> : null}
       {error ? <p className="rounded-lg bg-[#fff2e8] p-3 font-bold text-[#9a3412]">{String(error)}</p> : null}
-      <div className="space-y-6">
+      {!isLoading && !error && !(data ?? []).some((group) => group.tasks.length) ? (
+        <div className="panel px-5 py-8 text-center">
+          <h2 className="text-lg font-bold">Your task list is clear</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">Use the + button to add your next task.</p>
+        </div>
+      ) : null}
+      <div className="space-y-5 lg:space-y-6">
         {(data ?? []).map((group) => (
           <section key={group.label}>
-            <h2 className={`mb-3 text-xl font-black ${group.overdue ? "text-[#b42318]" : ""}`}>{group.label}</h2>
-            <div className="space-y-3">
+            <h2 className={`mb-2.5 text-lg font-bold lg:mb-3 lg:text-xl lg:font-black ${group.overdue ? "text-[#b42318]" : ""}`}>{group.label}</h2>
+            <div className="space-y-2.5 lg:space-y-3">
               {group.tasks.map((task) => (
                 <TaskCard
                   key={`${task.id}-${task.due_at ?? task.due_date ?? ""}-${task.is_preview}`}

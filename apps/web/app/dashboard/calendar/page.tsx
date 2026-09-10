@@ -64,8 +64,8 @@ export default function CalendarPage() {
   const selectedTasks = tasksFor(selected);
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[1fr_360px]">
-      <div>
+    <section className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-w-0">
         <div className="mb-4 flex items-center justify-between lg:mb-5">
           <div>
             <h1 className="hidden text-3xl font-black lg:block">Calendar</h1>
@@ -80,7 +80,7 @@ export default function CalendarPage() {
             </button>
           </div>
         </div>
-        <div className="calendar-grid panel grid grid-cols-7 overflow-hidden">
+        <div className="calendar-grid panel grid min-w-0 w-full overflow-hidden">
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
             <div className="border-b border-[#dfd7ca] bg-white p-2 text-center text-xs font-bold text-[#667085] lg:p-3 lg:text-left lg:text-sm lg:font-black" key={day}>
               <span className="calendar-weekday-short">{day[0]}</span>
@@ -123,7 +123,7 @@ export default function CalendarPage() {
           })}
         </div>
       </div>
-      <aside className="panel p-4">
+      <aside className="panel min-w-0 overflow-hidden p-4">
         <h2 className="text-xl font-black">{format(selected, "EEE, MMM d")}</h2>
         <div className="mt-4 space-y-3">
           {selectedTasks.length ? (
@@ -135,7 +135,7 @@ export default function CalendarPage() {
               >
                 <p className="break-words font-black">{task.title}</p>
                 {task.description ? (
-                  <p className="mt-1 truncate text-sm text-[#667085]">
+                  <p className="mt-1 min-w-0 truncate text-sm text-[#667085]">
                     <LinkedText text={task.description.split("\n")[0]} />
                   </p>
                 ) : null}

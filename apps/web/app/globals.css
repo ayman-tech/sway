@@ -512,9 +512,17 @@ select {
   flex-direction: column;
   justify-content: center;
   min-height: 44px;
+  min-width: 0;
+  overflow: hidden;
   padding: 4px;
   position: relative;
   text-align: center;
+  width: 100%;
+}
+
+.calendar-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  width: 100%;
 }
 
 .calendar-mobile-markers {

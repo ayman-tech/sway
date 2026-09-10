@@ -9,6 +9,7 @@ from fastapi import Depends, Header, HTTPException, status
 from supabase import Client, create_client
 
 from api.config import get_settings
+from api.observability import timed_stage
 
 _API_KEY_PREFIX = "sway_"
 
@@ -48,7 +49,8 @@ def admin_client() -> Client:
 def _lookup_api_key(token: str) -> CurrentUser:
     key_hash = hashlib.sha256(token.encode()).hexdigest()
     client = admin_client()
-    res = client.table("user_settings").select("user_id").eq("api_key_hash", key_hash).limit(1).execute()
+    with timed_stage("supabase.api_key.lookup"):
+        res = client.table("user_settings").select("user_id").eq("api_key_hash", key_hash).limit(1).execute()
     if not res.data:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired API key.")
     return CurrentUser(id=res.data[0]["user_id"], email=None, token=token, client=client, is_api_key=True)
@@ -61,7 +63,8 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
     settings = get_settings()
     auth_client = create_client(settings.supabase_url, settings.supabase_key)
     try:
-        res = auth_client.auth.get_user(token)
+        with timed_stage("supabase.auth.get_user"):
+            res = auth_client.auth.get_user(token)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token.") from exc
     if res.user is None:

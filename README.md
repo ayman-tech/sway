@@ -54,6 +54,26 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000). The first screen is the public landing page;
 the CTA goes to `/auth`, and successful auth redirects to `/dashboard`.
 
+### Production API worker update
+
+Production uses two Uvicorn workers with a 30-second worker health-check timeout. After deploying
+this configuration to an existing VM, update its installed `sway-api.service` once: append
+`--timeout-worker-healthcheck 30` to the existing `ExecStart` command without changing that VM's
+user, home directory, or working directory. Open the installed unit with
+`sudo systemctl edit --full sway-api`, update only that command, then apply and verify it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart sway-api
+sudo systemctl status sway-api --no-pager
+sudo systemctl show sway-api -p MainPID -p NRestarts
+sudo systemctl cat sway-api
+```
+
+Normal `make deploy` runs can continue afterward; they restart the installed unit but do not
+replace its VM-specific username or paths. API responses expose `X-Request-ID` and `Server-Timing`
+headers, and request/stage durations are available with `make logs-api`.
+
 ### Optional: cloud sync (Supabase)
 
 1. Create a free project at [supabase.com](https://supabase.com).

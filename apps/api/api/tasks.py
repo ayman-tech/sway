@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import HTTPException, status
 
 from api.auth import CurrentUser
+from api.observability import timed_stage
 from api.schemas import TaskCreate, TaskOut, TaskUpdate
 from sway_core.constants import Source, TaskStatus
 from sway_core.datetime_utils import to_iso, utc_now
@@ -88,7 +89,8 @@ class TaskStore:
         self.client = user.client
 
     def list_all(self) -> list[Task]:
-        res = self.client.table("tasks").select("*").eq("user_id", self.user.id).order("created_at", desc=True).execute()
+        with timed_stage("supabase.tasks.select"):
+            res = self.client.table("tasks").select("*").eq("user_id", self.user.id).order("created_at", desc=True).execute()
         return [task_from_row(row) for row in (res.data or [])]
 
     def list_active(self) -> list[Task]:
@@ -201,7 +203,9 @@ def skip_occurrence(user: CurrentUser, task_id: str) -> None:
 
 
 def groups_for(user: CurrentUser, timezone_name: str = "UTC"):
-    return active_groups(TaskStore(user).list_active(), timezone_name)
+    tasks = TaskStore(user).list_active()
+    with timed_stage("tasks.group"):
+        return active_groups(tasks, timezone_name)
 
 
 def completed_for(user: CurrentUser):

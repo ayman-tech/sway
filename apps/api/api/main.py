@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import logging
+import os
+from time import perf_counter
+import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
@@ -20,6 +24,7 @@ from api.google_integration import (
     save_credentials,
     sync_google,
 )
+from api.observability import bind_request_id, reset_request_id
 from api.schemas import (
     ApiKeyOut,
     AvailabilityShareCreate,
@@ -57,6 +62,7 @@ from sway_core.datetime_utils import from_iso, utc_now
 from sway_core.reminders import reminder_events_between
 
 app = FastAPI(title="Sway API")
+timing_logger = logging.getLogger("uvicorn.error")
 
 settings = get_settings()
 app.add_middleware(
@@ -65,7 +71,53 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "Server-Timing"],
 )
+
+
+@app.middleware("http")
+async def request_timing(request: Request, call_next):
+    request_id = uuid.uuid4().hex[:12]
+    request_token = bind_request_id(request_id)
+    pid = os.getpid()
+    started = perf_counter()
+    timing_logger.info(
+        "timing request_start request_id=%s pid=%s method=%s path=%s",
+        request_id,
+        pid,
+        request.method,
+        request.url.path,
+    )
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = (perf_counter() - started) * 1000
+        timing_logger.warning(
+            "timing request_error request_id=%s pid=%s method=%s path=%s duration_ms=%.1f error_type=%s",
+            request_id,
+            pid,
+            request.method,
+            request.url.path,
+            duration_ms,
+            type(exc).__name__,
+        )
+        raise
+    else:
+        duration_ms = (perf_counter() - started) * 1000
+        response.headers["X-Request-ID"] = request_id
+        response.headers["Server-Timing"] = f"app;dur={duration_ms:.1f}"
+        timing_logger.info(
+            "timing request_complete request_id=%s pid=%s method=%s path=%s status=%s duration_ms=%.1f",
+            request_id,
+            pid,
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+        return response
+    finally:
+        reset_request_id(request_token)
 
 
 @app.get("/health")

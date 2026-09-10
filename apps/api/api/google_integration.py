@@ -16,6 +16,7 @@ from googleapiclient.errors import HttpError
 
 from api.auth import CurrentUser, admin_client
 from api.config import get_settings
+from api.observability import timed_stage
 from api.schemas import GoogleCredentialsUpdate, GoogleStatusOut, GoogleSyncOut
 from api.secret_crypto import decrypt_secret, encrypt_secret, encryption_available
 from api.tasks import TaskStore
@@ -39,7 +40,8 @@ def _table():
 
 
 def _row_for_user(user_id: str) -> dict | None:
-    result = _table().select("*").eq("user_id", user_id).limit(1).execute()
+    with timed_stage("supabase.google.connection_lookup"):
+        result = _table().select("*").eq("user_id", user_id).limit(1).execute()
     return result.data[0] if result.data else None
 
 
@@ -219,13 +221,14 @@ def _acquire_sync_lease(row: dict, force: bool) -> bool:
     last_synced_at = from_iso(row.get("last_synced_at"))
     if not force and last_synced_at and last_synced_at > now - SYNC_COOLDOWN:
         return False
-    result = (
-        _table()
-        .update({"sync_lease_until": (now + SYNC_LEASE).isoformat()})
-        .eq("user_id", row["user_id"])
-        .or_(f"sync_lease_until.is.null,sync_lease_until.lt.{now.isoformat()}")
-        .execute()
-    )
+    with timed_stage("supabase.google.sync_lease"):
+        result = (
+            _table()
+            .update({"sync_lease_until": (now + SYNC_LEASE).isoformat()})
+            .eq("user_id", row["user_id"])
+            .or_(f"sync_lease_until.is.null,sync_lease_until.lt.{now.isoformat()}")
+            .execute()
+        )
     return bool(result.data)
 
 
@@ -237,22 +240,25 @@ def sync_google(user: CurrentUser, force: bool = False) -> GoogleSyncOut:
         return GoogleSyncOut(imported=0, skipped=True)
 
     try:
-        changed, tokens = _import_google(user, row)
+        with timed_stage("google.calendar.import"):
+            changed, tokens = _import_google(user, row)
         now = utc_now()
-        _table().update({
-            "sync_tokens_json": tokens,
-            "last_synced_at": now.isoformat(),
-            "sync_lease_until": None,
-            "last_sync_error": None,
-            "updated_at": now.isoformat(),
-        }).eq("user_id", user.id).execute()
+        with timed_stage("supabase.google.sync_state_update"):
+            _table().update({
+                "sync_tokens_json": tokens,
+                "last_synced_at": now.isoformat(),
+                "sync_lease_until": None,
+                "last_sync_error": None,
+                "updated_at": now.isoformat(),
+            }).eq("user_id", user.id).execute()
         return GoogleSyncOut(imported=changed)
     except Exception as exc:
-        _table().update({
-            "sync_lease_until": None,
-            "last_sync_error": str(exc)[:1000] or "Google Calendar sync failed.",
-            "updated_at": utc_now().isoformat(),
-        }).eq("user_id", user.id).execute()
+        with timed_stage("supabase.google.sync_state_error"):
+            _table().update({
+                "sync_lease_until": None,
+                "last_sync_error": str(exc)[:1000] or "Google Calendar sync failed.",
+                "updated_at": utc_now().isoformat(),
+            }).eq("user_id", user.id).execute()
         raise
 
 
@@ -362,5 +368,4 @@ def _reconcile_deleted(store: TaskStore, seen_ids: set[str]) -> int:
         store.upsert(task.touched(deleted_at=utc_now()))
         removed += 1
     return removed
-
 

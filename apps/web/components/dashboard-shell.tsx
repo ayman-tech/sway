@@ -44,6 +44,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const [shellSettingsSettled, setShellSettingsSettled] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -83,7 +84,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             setTheme(active.theme);
             setDisplayName([active.first_name, active.last_name].filter(Boolean).join(" "));
           })
-          .catch(() => undefined);
+          .catch(() => undefined)
+          .finally(() => setShellSettingsSettled(true));
       }
     });
   }, [router, setTheme]);
@@ -165,7 +167,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
       <main className="dashboard-main min-w-0 px-4 pt-4 lg:px-8 lg:py-6">
         <ReminderPoller />
-        <GoogleSyncTrigger />
+        <GoogleSyncTrigger shellReady={shellSettingsSettled} />
         {children}
       </main>
 

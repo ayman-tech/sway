@@ -241,6 +241,25 @@ select {
   color: var(--foreground);
 }
 
+.pwa-offline-banner {
+  background: var(--foreground);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 12px 32px color-mix(in srgb, #000000 28%, transparent);
+  color: var(--background);
+  font-size: 0.875rem;
+  font-weight: 700;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px;
+  position: fixed;
+  text-align: center;
+  top: calc(64px + env(safe-area-inset-top));
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 80;
+}
+
 .mobile-topbar {
   align-items: center;
   backdrop-filter: blur(16px);
@@ -582,6 +601,10 @@ select {
 }
 
 @media (min-width: 1024px) {
+  .pwa-offline-banner {
+    top: 16px;
+  }
+
   .mobile-topbar,
   .mobile-bottom-nav,
   .mobile-fab,

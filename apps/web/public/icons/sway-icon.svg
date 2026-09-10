@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">Sway</title>
+  <desc id="description">A white S inside a progress ring with a completion check.</desc>
+  <defs>
+    <linearGradient id="sway-blue" x1="64" y1="40" x2="448" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#397BFF" />
+      <stop offset="1" stop-color="#1F5DEB" />
+    </linearGradient>
+  </defs>
+
+  <!-- Full-bleed color keeps the icon compatible with adaptive and maskable icons. -->
+  <rect width="512" height="512" fill="url(#sway-blue)" />
+
+  <!-- Open progress ring, leaving room for the completion badge. -->
+  <path
+    d="M384 315A148 148 0 1 0 282 397"
+    fill="none"
+    stroke="#fff"
+    stroke-width="26"
+    stroke-linecap="round"
+  />
+
+  <!-- Vector letterform stays crisp at launcher and favicon sizes. -->
+  <path
+    d="M350 157c-22-26-55-40-94-40-59 0-103 31-103 79 0 45 32 67 94 81 39 9 54 19 54 38 0 21-19 33-49 33-37 0-69-16-92-43l-39 42c31 34 75 52 128 52 66 0 111-34 111-87 0-45-30-68-94-83-39-9-54-18-54-35 0-18 17-29 44-29 33 0 58 12 78 34l36-42Z"
+    fill="#fff"
+    transform="translate(72 64) scale(.72)"
+  />
+
+  <circle cx="369" cy="360" r="58" fill="#fff" />
+  <path
+    d="m338 360 20 21 43-47"
+    fill="none"
+    stroke="#2868F4"
+    stroke-width="18"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

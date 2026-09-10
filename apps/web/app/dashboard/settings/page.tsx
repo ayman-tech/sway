@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type { ApiKeyOut, GoogleStatus, GoogleSyncResult, UserSettings } from "@/lib/types";
 import { useTheme, type ThemePreference } from "@/components/theme-provider";
 import { GoogleSetupModal } from "@/components/google-setup-modal";
+import { PwaInstallCard } from "@/components/pwa-install-card";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -154,6 +155,7 @@ export default function SettingsPage() {
           <option value="dark">Dark</option>
         </select>
       </div>
+      <PwaInstallCard />
       <div className="panel p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">
           <Bell size={20} /> Browser notifications

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 from fastapi import Depends, Header, HTTPException, status
@@ -73,6 +75,17 @@ def _auth_failure(exc: Exception) -> HTTPException:
     return HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token.")
 
 
+def _claims_from_response(response: object | None) -> Mapping[str, Any] | None:
+    """Normalize the response shape returned by supported supabase-auth versions."""
+    if response is None:
+        return None
+    if isinstance(response, Mapping):
+        claims = response.get("claims")
+    else:
+        claims = getattr(response, "claims", None)
+    return claims if isinstance(claims, Mapping) else None
+
+
 def _resolve_current_user(authorization: str | None) -> CurrentUser:
     token = _bearer_token(authorization)
     if token.startswith(_API_KEY_PREFIX):
@@ -82,7 +95,7 @@ def _resolve_current_user(authorization: str | None) -> CurrentUser:
             response = authentication_client().auth.get_claims(token)
     except Exception as exc:
         raise _auth_failure(exc) from exc
-    claims = response.claims if response is not None else None
+    claims = _claims_from_response(response)
     user_id = claims.get("sub") if claims else None
     if not isinstance(user_id, str) or not user_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token.")

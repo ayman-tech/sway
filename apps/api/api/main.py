@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
 import logging
 import os
-from time import perf_counter
 import uuid
+from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta
+from time import perf_counter
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from sway_core.datetime_utils import from_iso, utc_now
+from sway_core.reminders import reminder_events_between
 
+from api.api_keys import generate_api_key, get_api_key, revoke_api_key
 from api.auth import CurrentUser, get_current_user
 from api.availability_shares import create_share, get_share
 from api.config import get_settings
-from api.api_keys import generate_api_key, get_api_key, revoke_api_key
 from api.google_integration import (
     connect_url,
     disconnect,
@@ -24,7 +28,7 @@ from api.google_integration import (
     save_credentials,
     sync_google,
 )
-from api.observability import bind_request_id, reset_request_id
+from api.observability import bind_request_id, log_upstream_failure, reset_request_id
 from api.schemas import (
     ApiKeyOut,
     AvailabilityShareCreate,
@@ -45,6 +49,7 @@ from api.schemas import (
     TaskUpdate,
 )
 from api.settings import get_user_settings, update_user_settings
+from api.supabase_clients import close_supabase_clients, initialize_supabase_clients
 from api.tasks import (
     TaskStore,
     calendar_for,
@@ -58,10 +63,18 @@ from api.tasks import (
     uncomplete_task,
     update_task,
 )
-from sway_core.datetime_utils import from_iso, utc_now
-from sway_core.reminders import reminder_events_between
 
-app = FastAPI(title="Sway API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    initialize_supabase_clients()
+    try:
+        yield
+    finally:
+        close_supabase_clients()
+
+
+app = FastAPI(title="Sway API", lifespan=lifespan)
 timing_logger = logging.getLogger("uvicorn.error")
 
 settings = get_settings()
@@ -73,6 +86,28 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID", "Server-Timing"],
 )
+
+
+def _upstream_error(status_code: int, detail: str) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"detail": detail})
+
+
+@app.exception_handler(httpx.PoolTimeout)
+async def supabase_pool_timeout(_request: Request, exc: httpx.PoolTimeout) -> JSONResponse:
+    log_upstream_failure("data_pool", exc)
+    return _upstream_error(status.HTTP_503_SERVICE_UNAVAILABLE, "Data service is busy.")
+
+
+@app.exception_handler(httpx.TimeoutException)
+async def supabase_timeout(_request: Request, exc: httpx.TimeoutException) -> JSONResponse:
+    log_upstream_failure("data_timeout", exc)
+    return _upstream_error(status.HTTP_504_GATEWAY_TIMEOUT, "Data service timed out.")
+
+
+@app.exception_handler(httpx.TransportError)
+async def supabase_transport_error(_request: Request, exc: httpx.TransportError) -> JSONResponse:
+    log_upstream_failure("data_connection", exc)
+    return _upstream_error(status.HTTP_503_SERVICE_UNAVAILABLE, "Data service is unavailable.")
 
 
 @app.middleware("http")

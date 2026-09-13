@@ -3,7 +3,13 @@ from __future__ import annotations
 import logging
 
 import pytest
-from api.observability import bind_request_id, reset_request_id, timed_stage
+
+from api.observability import (
+    bind_request_id,
+    log_upstream_failure,
+    reset_request_id,
+    timed_stage,
+)
 
 
 def test_timed_stage_logs_correlated_start_and_completion(caplog) -> None:
@@ -46,3 +52,21 @@ def test_timed_stage_logs_only_exception_type(caplog) -> None:
         for message in messages
     )
     assert all("private detail" not in message for message in messages)
+
+
+def test_upstream_failure_log_excludes_exception_message(caplog) -> None:
+    token = bind_request_id("request-789")
+    try:
+        with caplog.at_level(logging.WARNING, logger="uvicorn.error"):
+            log_upstream_failure("data_timeout", RuntimeError("private upstream detail"))
+    finally:
+        reset_request_id(token)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "request_id=request-789" in message
+        and "category=data_timeout" in message
+        and "error_type=RuntimeError" in message
+        for message in messages
+    )
+    assert all("private upstream detail" not in message for message in messages)

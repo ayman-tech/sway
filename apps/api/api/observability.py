@@ -25,6 +25,18 @@ def reset_request_id(token: Token[str]) -> None:
     _request_id.reset(token)
 
 
+def log_upstream_failure(category: str, exc: Exception) -> None:
+    """Log only a safe failure category and exception type."""
+
+    logger.warning(
+        "upstream_failure request_id=%s pid=%s category=%s error_type=%s",
+        request_id(),
+        os.getpid(),
+        category,
+        type(exc).__name__,
+    )
+
+
 @contextmanager
 def timed_stage(stage: str) -> Iterator[None]:
     """Log the beginning and end of a safe, named request stage."""

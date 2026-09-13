@@ -11,6 +11,7 @@ from supabase_auth.errors import (
     AuthRetryableError,
     AuthUnknownError,
 )
+from supabase_auth.types import ClaimsResponse
 
 from api import auth
 
@@ -33,7 +34,15 @@ def auth_client(fake_auth: FakeAuth):
 
 
 def test_resolves_user_from_verified_claims(monkeypatch) -> None:
-    verified = FakeAuth(SimpleNamespace(claims={"sub": "user-123", "email": "a@example.com"}))
+    # supabase-auth's ClaimsResponse is a TypedDict at runtime, so production
+    # returns a mapping rather than an object with a `.claims` attribute.
+    verified = FakeAuth(
+        ClaimsResponse(
+            claims={"sub": "user-123", "email": "a@example.com"},
+            header={},
+            signature=b"",
+        )
+    )
     scoped_client = object()
     monkeypatch.setattr(auth, "authentication_client", lambda: auth_client(verified))
     monkeypatch.setattr(auth, "user_client", lambda token: scoped_client)
@@ -46,6 +55,14 @@ def test_resolves_user_from_verified_claims(monkeypatch) -> None:
     assert user.client is scoped_client
     assert not user.is_api_key
     assert verified.tokens == ["signed-token"]
+
+
+def test_resolves_legacy_object_claims_response(monkeypatch) -> None:
+    verified = FakeAuth(SimpleNamespace(claims={"sub": "user-123"}))
+    monkeypatch.setattr(auth, "authentication_client", lambda: auth_client(verified))
+    monkeypatch.setattr(auth, "user_client", lambda token: object())
+
+    assert auth._resolve_current_user("Bearer signed-token").id == "user-123"
 
 
 @pytest.mark.parametrize(
@@ -79,7 +96,7 @@ def test_auth_failures_are_classified_without_leaking_details(
 
 @pytest.mark.parametrize("claims", [None, {}, {"sub": ""}, {"sub": 123}])
 def test_missing_verified_subject_is_unauthorized(monkeypatch, claims) -> None:
-    result = None if claims is None else SimpleNamespace(claims=claims)
+    result = None if claims is None else {"claims": claims}
     monkeypatch.setattr(
         auth,
         "authentication_client",

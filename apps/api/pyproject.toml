@@ -9,10 +9,12 @@ dependencies = [
     "google-api-python-client>=2.197.0",
     "google-auth>=2.53.0",
     "google-auth-oauthlib>=1.4.0",
+    "httpx[http2]>=0.28.1",
     "pydantic>=2.13.0",
     "python-dateutil>=2.9.0.post0",
     "sway-core",
     "supabase>=2.30.1",
+    "supabase-auth>=2.30.1",
     "uvicorn[standard]>=0.38.0",
 ]
 

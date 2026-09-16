@@ -1,4 +1,4 @@
-.PHONY: app web api mcp install build-web deploy logs-api logs-web
+.PHONY: app web api install build-web deploy logs-api logs-web
 
 # ── local dev ────────────────────────────────────────────────────────────────
 
@@ -10,9 +10,6 @@ api:
 
 web:
 	npm --prefix apps/web run dev -- -p 3010
-
-mcp:
-	uv run --project apps/mcp sway-mcp
 
 # ── production ───────────────────────────────────────────────────────────────
 

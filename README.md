@@ -70,9 +70,12 @@ sudo systemctl show sway-api -p MainPID -p NRestarts
 sudo systemctl cat sway-api
 ```
 
-Normal `make deploy` runs can continue afterward; they restart the installed unit but do not
-replace its VM-specific username or paths. API responses expose `X-Request-ID` and `Server-Timing`
-headers, and request/stage durations are available with `make logs-api`.
+Production deploys build the standalone Next.js server on GitHub Actions and upload the finished
+artifact, so the small VM no longer runs `npm ci` or `next build` while serving users. The VM keeps
+its own `.env.production`, performs only a lightweight API dependency sync, atomically activates
+the artifact, and restarts its existing VM-specific systemd units. API responses expose
+`X-Request-ID` and `Server-Timing` headers, and request/stage durations are available with
+`make logs-api`.
 
 ### Optional: cloud sync (Supabase)
 

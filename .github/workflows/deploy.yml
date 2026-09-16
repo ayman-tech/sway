@@ -1,40 +1,50 @@
 name: Deploy
 
-# Rebuilds and redeploys the AWS instance whenever main is updated.
-# Runs `make deploy` through a login shell on the server over SSH
+# Builds Next.js on GitHub, then uploads the ready-to-run standalone artifact.
+# The production VM only updates API dependencies, installs the artifact, and
+# restarts systemd services.
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   DEPLOY_HOST     public IP or hostname of the AWS instance
-#   DEPLOY_USER     SSH user (e.g. ubuntu)
-#   DEPLOY_SSH_KEY  private key whose public half is in the user's authorized_keys
-#   DEPLOY_PATH     absolute path to the repo checkout on the box
-#   DEPLOY_PORT     (optional) SSH port, defaults to 22
+#   DEPLOY_HOST     public IP or hostname of the production VM
+#   DEPLOY_USER     SSH user (for example, aymansayedx)
+#   DEPLOY_SSH_KEY  private key whose public half is in authorized_keys
+#   DEPLOY_PATH     absolute path to the repo checkout on the VM
+#   DEPLOY_PORT     (optional) SSH port; defaults to 22
 #
-# The deploy user needs passwordless sudo for the restart, e.g. in
-# /etc/sudoers.d/sway:
-#   <user> ALL=(root) NOPASSWD: /usr/bin/systemctl restart sway-api sway-web
+# apps/web/.env.production remains on the VM. It should contain only the
+# NEXT_PUBLIC_* build variables used by the browser application.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Never let two deploys run at once; let an in-progress one finish.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - name: Deploy over SSH
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Configure production SSH
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
           set -euo pipefail
@@ -43,5 +53,58 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p "$port" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/deploy_key -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "bash -lc 'set -e; cd \"$DEPLOY_PATH\" && make deploy'"
+
+      - name: Load production web configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          port="${DEPLOY_PORT:-22}"
+          scp -i ~/.ssh/deploy_key -P "$port" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/apps/web/.env.production" \
+            apps/web/.env.production
+
+      - name: Build standalone web artifact
+        run: |
+          set -euo pipefail
+          npm --prefix apps/web ci
+          npm --prefix apps/web run build
+          tar -C apps/web/.next/standalone -czf "$RUNNER_TEMP/sway-web.tar.gz" .
+
+      - name: Upload and activate release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          port="${DEPLOY_PORT:-22}"
+          remote_artifact="$DEPLOY_PATH/.deploy/sway-web-$GITHUB_SHA.tar.gz"
+
+          printf -v prepare_command 'mkdir -p %q' "$DEPLOY_PATH/.deploy"
+          ssh -i ~/.ssh/deploy_key -p "$port" \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$prepare_command"
+
+          scp -i ~/.ssh/deploy_key -P "$port" \
+            "$RUNNER_TEMP/sway-web.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$remote_artifact"
+
+          printf -v deploy_command 'bash -s -- %q %q %q' \
+            "$DEPLOY_PATH" "$GITHUB_SHA" "$remote_artifact"
+          ssh -i ~/.ssh/deploy_key -p "$port" \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$deploy_command" <<'REMOTE'
+          set -euo pipefail
+          deploy_path="$1"
+          commit_sha="$2"
+          artifact="$3"
+
+          cd "$deploy_path"
+          git fetch origin main
+          git checkout -f main
+          git reset --hard "$commit_sha"
+          make deploy WEB_ARTIFACT="$artifact"
+          REMOTE

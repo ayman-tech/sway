@@ -21,12 +21,8 @@ build-web:
 	npm --prefix apps/web run build
 
 deploy:
-	git checkout main -f
-	git pull origin main
-	uv sync --project apps/api
-	npm --prefix apps/web ci
-	npm --prefix apps/web run build
-	sudo systemctl restart sway-api sway-web
+	@test -n "$(WEB_ARTIFACT)" || (echo "WEB_ARTIFACT is required; production builds run in GitHub Actions" >&2; exit 2)
+	flock -w 600 /tmp/sway-deploy.lock bash deploy/install-release.sh "$(WEB_ARTIFACT)"
 
 logs-api:
 	sudo journalctl -u sway-api -f

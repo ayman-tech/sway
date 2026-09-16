@@ -28,4 +28,3 @@ tests/*
 CLAUDE.md
 AGENTS.md
 docs/*
-!docs/BUILD_ISSUES_AND_SOLUTIONS.md

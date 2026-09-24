@@ -17,6 +17,8 @@ export default function SettingsPage() {
   const [googleSetupOpen, setGoogleSetupOpen] = useState(false);
   const [googleMessage, setGoogleMessage] = useState("");
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [apiKeyMessage, setApiKeyMessage] = useState("");
+  const [apiKeyActionError, setApiKeyActionError] = useState("");
   const { data: settings } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<UserSettings>("/settings"),
@@ -25,23 +27,44 @@ export default function SettingsPage() {
     queryKey: ["google-status"],
     queryFn: () => api<GoogleStatus>("/integrations/google/status"),
   });
-  const { data: apiKey } = useQuery({
+  const { data: apiKey, error: apiKeyLoadError, isPending: apiKeyLoading, refetch: refetchApiKey } = useQuery({
     queryKey: ["api-key"],
     queryFn: () => api<ApiKeyOut>("/me/api-key"),
   });
+  const beginKeyAction = async () => {
+    setApiKeyMessage("");
+    setApiKeyActionError("");
+    setApiKeyCopied(false);
+    await qc.cancelQueries({ queryKey: ["api-key"] });
+  };
   const generateKey = useMutation({
     mutationFn: () => api<ApiKeyOut>("/me/api-key", { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["api-key"] }),
+    onMutate: beginKeyAction,
+    onSuccess: (key) => {
+      qc.setQueryData(["api-key"], key);
+      setApiKeyMessage("Key generated. Copy it into your agent configuration; any previous key no longer works.");
+    },
+    onError: (error) => setApiKeyActionError(`Unable to generate key: ${error.message}`),
   });
   const revokeKey = useMutation({
     mutationFn: () => api<void>("/me/api-key", { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["api-key"] }),
+    onMutate: beginKeyAction,
+    onSuccess: () => {
+      qc.setQueryData(["api-key"], { key: null, created_at: null });
+      setApiKeyMessage("Key revoked.");
+    },
+    onError: (error) => setApiKeyActionError(`Unable to revoke key: ${error.message}`),
   });
-  const copyApiKey = () => {
+  const copyApiKey = async () => {
     if (!apiKey?.key) return;
-    navigator.clipboard.writeText(apiKey.key);
-    setApiKeyCopied(true);
-    setTimeout(() => setApiKeyCopied(false), 2000);
+    setApiKeyActionError("");
+    try {
+      await navigator.clipboard.writeText(apiKey.key);
+      setApiKeyCopied(true);
+      setTimeout(() => setApiKeyCopied(false), 2000);
+    } catch {
+      setApiKeyActionError("Unable to copy key. Select and copy the key manually.");
+    }
   };
   const patchSettings = useMutation({
     mutationFn: (payload: Partial<UserSettings>) => api<UserSettings>("/settings", { method: "PATCH", body: JSON.stringify(payload) }),
@@ -232,23 +255,36 @@ export default function SettingsPage() {
             </div>
           </>
         ) : (
-          <p className="mt-2 text-sm text-[var(--muted)]">No key generated yet.</p>
+          <p className="mt-2 text-sm text-[var(--muted)]">
+            {apiKeyLoading ? "Loading API key…" : apiKeyLoadError ? "API key could not be loaded." : "No key generated yet."}
+          </p>
         )}
+        {apiKeyActionError || apiKeyLoadError ? (
+          <div role="alert" className="mt-3 text-sm text-[var(--muted)]">
+            <p>{apiKeyActionError || `Unable to load key: ${apiKeyLoadError?.message}`}</p>
+            {apiKeyLoadError ? (
+              <button className="btn btn-secondary mt-2" onClick={() => void refetchApiKey()}>Retry loading key</button>
+            ) : null}
+          </div>
+        ) : null}
+        <p role="status" className="mt-2 text-sm text-[var(--muted)]">
+          {generateKey.isPending ? "Generating key…" : revokeKey.isPending ? "Revoking key…" : apiKeyMessage}
+        </p>
         <div className="mobile-action-row mt-4 flex flex-wrap gap-3">
           <button
             className="btn btn-primary"
-            disabled={generateKey.isPending}
+            disabled={generateKey.isPending || revokeKey.isPending}
             onClick={() => generateKey.mutate()}
           >
-            {apiKey?.key ? "Regenerate key" : "Generate key"}
+            {generateKey.isPending ? "Generating…" : apiKey?.key ? "Regenerate key" : "Generate key"}
           </button>
           {apiKey?.key ? (
             <button
               className="btn btn-secondary"
-              disabled={revokeKey.isPending}
+              disabled={generateKey.isPending || revokeKey.isPending}
               onClick={() => revokeKey.mutate()}
             >
-              Revoke key
+              {revokeKey.isPending ? "Revoking…" : "Revoke key"}
             </button>
           ) : null}
         </div>

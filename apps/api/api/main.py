@@ -49,6 +49,7 @@ from api.schemas import (
     TaskUpdate,
 )
 from api.settings import get_user_settings, update_user_settings
+from api.push import router as push_router
 from api.supabase_clients import close_supabase_clients, initialize_supabase_clients
 from api.tasks import (
     TaskStore,
@@ -75,6 +76,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Sway API", lifespan=lifespan)
+app.include_router(push_router)
 timing_logger = logging.getLogger("uvicorn.error")
 
 settings = get_settings()
@@ -279,7 +281,7 @@ def patch_settings(payload: SettingsUpdate, user: CurrentUser = Depends(get_curr
 def due_reminders(since: str | None = None, user: CurrentUser = Depends(get_current_user)) -> ReminderBatchOut:
     processed_through = utc_now()
     start = from_iso(since) or (processed_through - timedelta(minutes=1))
-    end = processed_through + timedelta(days=1)
+    end = processed_through
     events = [
         event for event in reminder_events_between(TaskStore(user).list_active(), start, end)
         if start < event.fire_at <= processed_through

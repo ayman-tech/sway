@@ -1,4 +1,4 @@
-.PHONY: app web api install build-web deploy logs-api logs-web
+.PHONY: app web api push install build-web deploy logs-api logs-web logs-push
 
 # ── local dev ────────────────────────────────────────────────────────────────
 
@@ -7,6 +7,9 @@ app:
 
 api:
 	uv run --project apps/api uvicorn api.main:app --reload --app-dir apps/api --port 8010
+
+push:
+	cd apps/api && uv run --frozen python -m api.push_worker
 
 web:
 	npm --prefix apps/web run dev -- -p 3010
@@ -29,3 +32,6 @@ logs-api:
 
 logs-web:
 	sudo journalctl -u sway-web -f
+
+logs-push:
+	sudo journalctl -u sway-push -f

@@ -2,12 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Bell, CalendarDays, Check, Copy, KeyRound, RefreshCw, Save, UserRound } from "lucide-react";
+import { CalendarDays, Check, Copy, KeyRound, RefreshCw, Save, UserRound } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ApiKeyOut, GoogleStatus, GoogleSyncResult, UserSettings } from "@/lib/types";
 import { useTheme, type ThemePreference } from "@/components/theme-provider";
 import { GoogleSetupModal } from "@/components/google-setup-modal";
 import { PwaInstallCard } from "@/components/pwa-install-card";
+import { PushSettingsCard } from "@/components/push-settings-card";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -179,23 +180,7 @@ export default function SettingsPage() {
         </select>
       </div>
       <PwaInstallCard />
-      <div className="panel p-4 lg:p-5">
-        <h2 className="flex items-center gap-2 text-xl font-black">
-          <Bell size={20} /> Browser notifications
-        </h2>
-        <p className="mt-2 text-[#667085]">Reminders can show browser notifications while the web app is open.</p>
-        <button
-          className="btn btn-secondary mobile-full mt-4"
-          onClick={async () => {
-            if ("Notification" in window) {
-              const permission = await Notification.requestPermission();
-              patchSettings.mutate({ browser_notifications_enabled: permission === "granted" });
-            }
-          }}
-        >
-          Enable notifications
-        </button>
-      </div>
+      <PushSettingsCard />
       <div className="panel p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">
           <CalendarDays size={20} /> Google Calendar

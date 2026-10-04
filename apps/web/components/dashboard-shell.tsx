@@ -24,6 +24,7 @@ import type { Task, UserSettings } from "@/lib/types";
 import { useTheme } from "@/components/theme-provider";
 import { TaskEditorModal, type TaskEditorPayload } from "@/components/task-editor-modal";
 import { useDialogBehavior } from "@/components/use-dialog-behavior";
+import { usePush } from "@/components/push-provider";
 
 const items = [
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
@@ -48,6 +49,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [signOutError, setSignOutError] = useState("");
+  const { beforeSignOut } = usePush();
   const { setTheme } = useTheme();
   const qc = useQueryClient();
   const moreDialogRef = useDialogBehavior<HTMLElement>(moreOpen, () => setMoreOpen(false));
@@ -114,8 +117,17 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     : "S";
   const moreActive = moreItems.some((item) => itemIsActive(pathname, item.href));
   const signOut = async () => {
-    await supabase.auth.signOut();
-    router.replace("/");
+    try {
+      setSignOutError("");
+      await beforeSignOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      qc.clear();
+      router.replace("/");
+    } catch (error) {
+      setMoreOpen(false);
+      setSignOutError(error instanceof Error ? error.message : "Unable to sign out. Try again.");
+    }
   };
 
   return (
@@ -166,6 +178,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="dashboard-main min-w-0 px-4 pt-4 lg:px-8 lg:py-6">
+        {signOutError ? <p role="alert" className="panel mb-4 p-4">{signOutError}</p> : null}
         <ReminderPoller />
         <GoogleSyncTrigger shellReady={shellSettingsSettled} />
         {children}

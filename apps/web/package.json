@@ -7,7 +7,8 @@
     "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "HOSTNAME=127.0.0.1 node .next/standalone/server.js",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:push": "node --test scripts/test-push-sw.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.88.0",

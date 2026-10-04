@@ -49,6 +49,9 @@ class Settings:
     web_public_url: str
     google_credentials_encryption_key: str | None
     google_redirect_uri: str
+    web_push_public_key: str = ""
+    web_push_private_key: str = ""
+    web_push_subject: str = ""
 
 
 def _normalize_public_url(url: str) -> str:
@@ -73,6 +76,9 @@ def get_settings() -> Settings:
     api_url = _normalize_public_url(os.environ.get("API_PUBLIC_URL", "http://localhost:8010"))
     web_url = _normalize_public_url(os.environ.get("WEB_PUBLIC_URL", "http://localhost:3010"))
     return Settings(
+        web_push_public_key=os.environ.get("WEB_PUSH_PUBLIC_KEY", ""),
+        web_push_private_key=os.environ.get("WEB_PUSH_PRIVATE_KEY", ""),
+        web_push_subject=os.environ.get("WEB_PUSH_SUBJECT", ""),
         supabase_url=_normalize_public_url(url),
         supabase_key=key,
         supabase_service_role_key=os.environ.get("SUPABASE_SERVICE_ROLE_KEY"),

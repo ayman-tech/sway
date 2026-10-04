@@ -54,6 +54,10 @@ mv "$pending_release" "$current_release"
 release_is_healthy() {
   local attempt
   for attempt in {1..30}; do
+    if systemctl is-enabled --quiet sway-push.service && ! systemctl is-active --quiet sway-push.service; then
+      sleep 1
+      continue
+    fi
     if curl --fail --silent --show-error --max-time 3 \
       http://127.0.0.1:8010/health >/dev/null 2>&1 && \
       curl --fail --silent --show-error --max-time 3 \
@@ -65,7 +69,13 @@ release_is_healthy() {
   return 1
 }
 
-if sudo systemctl restart sway-api sway-web && release_is_healthy; then
+services=(sway-api sway-web)
+# Installation is opt-in. Do not replace customized units or start a disabled worker.
+if systemctl is-enabled --quiet sway-push.service; then
+  services+=(sway-push)
+fi
+
+if sudo systemctl restart "${services[@]}" && release_is_healthy; then
   rm -rf "$previous_release"
   rm -f "$artifact"
   trap - EXIT
@@ -77,6 +87,6 @@ echo "Release health check failed; restoring the previous web release." >&2
 rm -rf "$current_release"
 if [[ -d "$previous_release" ]]; then
   mv "$previous_release" "$current_release"
-  sudo systemctl restart sway-api sway-web || true
+  sudo systemctl restart "${services[@]}" || true
 fi
 exit 1

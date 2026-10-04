@@ -2,6 +2,7 @@
 -- Run this once in your Supabase project: SQL Editor → New query → paste → Run.
 -- It creates the cloud `tasks` table and Row-Level Security so each account only
 -- sees its own rows. The local SQLite row id is reused as the cloud row id.
+-- For optional Web Push, also apply migrations/20261004_web_push.sql.
 
 create table if not exists public.tasks (
     id uuid primary key,

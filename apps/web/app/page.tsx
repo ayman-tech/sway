@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, CalendarDays, CheckCircle2, Bell, RefreshCw, Bot, Check, Link2, Smartphone, ListTodo } from "lucide-react";
 import styles from "./landing.module.css";
+import { LandingThemeToggle } from "@/components/landing-theme-toggle";
 
 const features = [
   { icon: ListTodo, title: "Know what needs you today", text: "Overdue, Today, Next 7 Days, and Later keep your next step in view. Give ideas without a deadline a home, too." },
@@ -17,9 +18,12 @@ export default function LandingPage() {
           <Link className="text-2xl font-black tracking-normal" href="/">
             Sway
           </Link>
-          <Link className="btn btn-secondary" href="/auth">
-            Log in
-          </Link>
+          <div className="flex items-center gap-3">
+            <LandingThemeToggle />
+            <Link className="btn btn-secondary" href="/auth">
+              Log in
+            </Link>
+          </div>
         </nav>
 
         <div className="mx-auto grid max-w-6xl gap-10 py-16 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">

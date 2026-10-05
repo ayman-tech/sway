@@ -29,5 +29,3 @@ tests
 CLAUDE.md
 AGENTS.md
 docs/*
-!docs/WEB_PUSH.md
-!docs/SAVED_TASK_VIEW.md

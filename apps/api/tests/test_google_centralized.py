@@ -159,10 +159,57 @@ def test_failed_sync_releases_lease_and_records_error(monkeypatch) -> None:
 
     try:
         google.sync_google(SimpleNamespace(id="user-id"))
-    except RuntimeError:
-        pass
+    except HTTPException as exc:
+        assert exc.status_code == 503
+        assert exc.detail == google.SYNC_ERROR_MESSAGE
     else:
         raise AssertionError("Sync failure should surface.")
 
     assert table.updates[-1]["sync_lease_until"] is None
-    assert table.updates[-1]["last_sync_error"] == "boom"
+    assert table.updates[-1]["last_sync_error"] == google.SYNC_ERROR_MESSAGE
+
+
+def test_invalid_grant_requires_reconnection(monkeypatch):
+    table = FakeQuery(data=[{"user_id": "user-id"}])
+    row = {"user_id": "user-id", "token_ciphertext": "encrypted"}
+    monkeypatch.setattr(google, "_row_for_user", lambda _: row)
+    monkeypatch.setattr(google, "_acquire_sync_lease", lambda *_: True)
+    monkeypatch.setattr(google, "_table", lambda: table)
+    error = google.RefreshError("invalid_grant: secret-provider-details", {"error": "invalid_grant"})
+    monkeypatch.setattr(google, "_import_google", lambda *_: (_ for _ in ()).throw(error))
+    try:
+        google.sync_google(SimpleNamespace(id="user-id"))
+    except HTTPException as exc:
+        assert exc.status_code == 409
+        assert exc.detail == google.RECONNECT_MESSAGE
+    else:
+        raise AssertionError("Must require reconnection")
+    assert table.updates[-1]["last_sync_error"] == google.RECONNECT_MESSAGE
+    assert "token_ciphertext" not in table.updates[-1]
+
+
+def test_temporary_refresh_failure_does_not_require_reconnection():
+    assert not google._authorization_failed(google.RefreshError("Service unavailable", {"error": "temporarily_unavailable"}))
+
+
+def test_legacy_error_is_sanitized_and_flagged(monkeypatch):
+    monkeypatch.setattr(google, "_row_for_user", lambda _: {
+        "token_ciphertext": "saved", "last_sync_error": "('invalid_grant: Bad Request', {'error': 'invalid_grant'})",
+    })
+    monkeypatch.setattr(google, "encryption_available", lambda: True)
+    monkeypatch.setattr(google, "get_settings", lambda: SimpleNamespace(google_redirect_uri="https://example.test/callback"))
+    result = google.google_status(SimpleNamespace(id="user-id"))
+    assert result.needs_reconnect
+    assert not result.connected
+    assert result.last_sync_error == google.RECONNECT_MESSAGE
+
+
+def test_known_revocation_skips_google_calls(monkeypatch):
+    monkeypatch.setattr(google, "_row_for_user", lambda _: {"token_ciphertext": "saved", "last_sync_error": google.RECONNECT_MESSAGE})
+    monkeypatch.setattr(google, "_import_google", lambda *_: (_ for _ in ()).throw(AssertionError("Must not call Google")))
+    try:
+        google.sync_google(SimpleNamespace(id="user-id"))
+    except HTTPException as exc:
+        assert exc.status_code == 409
+    else:
+        raise AssertionError("Must require reconnection")

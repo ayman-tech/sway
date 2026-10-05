@@ -40,6 +40,7 @@ export type UserSettings = {
 export type GoogleStatus = {
   configured: boolean;
   connected: boolean;
+  needs_reconnect: boolean;
   setup_available: boolean;
   client_id: string | null;
   redirect_uri: string;

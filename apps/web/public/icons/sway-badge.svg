@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Sway notification badge</title>
+  <!-- Android tints the opaque silhouette; the background must stay transparent. -->
+  <path d="M350 157c-22-26-55-40-94-40-59 0-103 31-103 79 0 45 32 67 94 81 39 9 54 19 54 38 0 21-19 33-49 33-37 0-69-16-92-43l-39 42c31 34 75 52 128 52 66 0 111-34 111-87 0-45-30-68-94-83-39-9-54-18-54-35 0-18 17-29 44-29 33 0 58 12 78 34l36-42Z" fill="#fff"/>
+</svg>

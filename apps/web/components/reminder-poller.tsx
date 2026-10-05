@@ -41,7 +41,7 @@ export function ReminderPoller() {
             const body = reminder.kind === "due" ? "Due now" : "Upcoming";
             if ("Notification" in window && Notification.permission === "granted") {
               const tag = `sway-foreground-${reminder.task.id}-${reminder.occurrence}-${reminder.fire_at}`;
-              if (registration?.active) await registration.showNotification(title, { body, tag, icon: "/icons/sway-192.png" });
+              if (registration?.active) await registration.showNotification(title, { body, tag, icon: "/icons/sway-192.png", badge: "/icons/sway-badge-96.png" });
               else new Notification(title, { body, tag });
             }
           }

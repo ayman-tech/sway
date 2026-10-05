@@ -65,6 +65,8 @@ test("matching enrollment displays title but no description or supplied URL", as
   assert.equal(w.notifications[0].body, "Upcoming");
   assert.equal(w.notifications[0].data.url, "/dashboard/tasks");
   assert.equal(w.notifications[0].description, undefined);
+  assert.equal(w.notifications[0].badge, "/icons/sway-badge-96.png");
+  assert.equal(w.notifications[0].icon, "/icons/sway-192.png");
 });
 
 test("logout and a different account suppress private title", async () => {

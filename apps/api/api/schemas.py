@@ -91,6 +91,7 @@ class ReminderBatchOut(BaseModel):
 class GoogleStatusOut(BaseModel):
     configured: bool
     connected: bool
+    needs_reconnect: bool = False
     setup_available: bool
     client_id: str | None = None
     redirect_uri: str

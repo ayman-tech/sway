@@ -97,6 +97,7 @@ export function GoogleSyncTrigger({ shellReady }: { shellReady: boolean }) {
         })
         .finally(() => {
           inFlight.current = false;
+          void queryClient.invalidateQueries({ queryKey: ["google-status"] });
           if (mounted.current) setSyncPending(false);
         });
     }, FOREGROUND_QUIET_PERIOD_MS);

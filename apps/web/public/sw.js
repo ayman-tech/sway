@@ -1,5 +1,5 @@
 const CACHE_PREFIX = "sway-pwa-";
-const CACHE_NAME = `${CACHE_PREFIX}v2`;
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
@@ -8,6 +8,7 @@ const PRECACHE_URLS = [
   "/icons/sway-192.png",
   "/icons/sway-512.png",
   "/icons/sway-maskable-512.png",
+  "/icons/sway-badge-96.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -78,7 +79,7 @@ self.addEventListener("push", (event) => {
     await self.registration.showNotification(matches && fresh ? String(payload.title || "Sway reminder").slice(0, 160) : "Sway", {
       body: matches && fresh ? String(payload.body || "Task reminder").slice(0, 160) : "Open Sway to check your notification settings.",
       icon: "/icons/sway-192.png",
-      badge: "/icons/sway-192.png",
+      badge: "/icons/sway-badge-96.png",
       tag: matches ? String(payload.tag || "sway-reminder") : "sway-notification-settings",
       data: { url: "/dashboard/tasks" },
     });

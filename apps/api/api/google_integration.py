@@ -9,6 +9,7 @@ import uuid
 
 from fastapi import HTTPException, status
 from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -33,6 +34,24 @@ from sway_core.google import (
 OAUTH_STATE_LIFETIME = timedelta(minutes=10)
 SYNC_COOLDOWN = timedelta(minutes=5)
 SYNC_LEASE = timedelta(minutes=5)
+RECONNECT_MESSAGE = "Google Calendar authorization expired or was revoked. Reconnect Google Calendar to resume syncing."
+SYNC_ERROR_MESSAGE = "Google Calendar could not finish syncing right now. Your saved tasks are still available. Try again shortly."
+
+
+def _needs_reconnect(error: str | None) -> bool:
+    # Also recognize errors persisted by older deployments; never return raw
+    # provider responses to the UI.
+    return bool(error and (error == RECONNECT_MESSAGE or "invalid_grant" in error))
+
+
+def _authorization_failed(exc: Exception) -> bool:
+    if isinstance(exc, RefreshError):
+        return any(
+            isinstance(arg, dict) and arg.get("error") == "invalid_grant"
+            or isinstance(arg, str) and arg.startswith("invalid_grant")
+            for arg in exc.args
+        )
+    return isinstance(exc, HttpError) and exc.resp.status == 401
 
 
 def _table():
@@ -83,15 +102,18 @@ def _authorization_url(row: dict) -> str:
 
 def google_status(user: CurrentUser) -> GoogleStatusOut:
     row = _row_for_user(user.id)
+    error = row.get("last_sync_error") if row else None
+    reconnect = _needs_reconnect(error)
     return GoogleStatusOut(
         configured=bool(row and row.get("oauth_client_secret_ciphertext")),
-        connected=bool(row and row.get("token_ciphertext")),
+        connected=bool(row and row.get("token_ciphertext")) and not reconnect,
+        needs_reconnect=reconnect,
         setup_available=encryption_available(),
         client_id=row.get("oauth_client_id") if row else None,
         redirect_uri=get_settings().google_redirect_uri,
         account=row.get("account_email") if row else None,
         last_synced_at=from_iso(row.get("last_synced_at")) if row else None,
-        last_sync_error=row.get("last_sync_error") if row else None,
+        last_sync_error=(RECONNECT_MESSAGE if reconnect else SYNC_ERROR_MESSAGE) if error else None,
     )
 
 
@@ -236,6 +258,8 @@ def sync_google(user: CurrentUser, force: bool = False) -> GoogleSyncOut:
     row = _row_for_user(user.id)
     if row is None or not row.get("token_ciphertext"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google Calendar is not connected.")
+    if _needs_reconnect(row.get("last_sync_error")):
+        raise HTTPException(status.HTTP_409_CONFLICT, RECONNECT_MESSAGE)
     if not _acquire_sync_lease(row, force):
         return GoogleSyncOut(imported=0, skipped=True)
 
@@ -253,13 +277,17 @@ def sync_google(user: CurrentUser, force: bool = False) -> GoogleSyncOut:
             }).eq("user_id", user.id).execute()
         return GoogleSyncOut(imported=changed)
     except Exception as exc:
+        reconnect = _authorization_failed(exc)
+        message = RECONNECT_MESSAGE if reconnect else SYNC_ERROR_MESSAGE
         with timed_stage("supabase.google.sync_state_error"):
             _table().update({
                 "sync_lease_until": None,
-                "last_sync_error": str(exc)[:1000] or "Google Calendar sync failed.",
+                "last_sync_error": message,
                 "updated_at": utc_now().isoformat(),
             }).eq("user_id", user.id).execute()
-        raise
+        # Handled HTTP errors retain CORS headers instead of looking like an
+        # opaque network failure to the browser. Do not expose provider details.
+        raise HTTPException(409 if reconnect else 503, message) from None
 
 
 def _import_google(user: CurrentUser, row: dict) -> tuple[int, dict[str, str]]:
@@ -368,4 +396,3 @@ def _reconcile_deleted(store: TaskStore, seen_ids: set[str]) -> int:
         store.upsert(task.touched(deleted_at=utc_now()))
         removed += 1
     return removed
-

@@ -1,22 +1,20 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { ApiError, api, isTransientApiError } from "@/lib/api";
-import type { Task, TaskGroup } from "@/lib/types";
+import { ApiError } from "@/lib/api";
+import type { Task } from "@/lib/types";
+import { useTaskData } from "@/components/task-data-provider";
 import { TaskCard } from "@/components/task-card";
 import { TaskEditorModal, type TaskEditorPayload } from "@/components/task-editor-modal";
 
 export default function TasksPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Task | null>(null);
-  const { data, isFetching, isPending, error, failureCount, refetch } = useQuery({
-    queryKey: ["task-groups"],
-    queryFn: () => api<TaskGroup[]>(`/tasks/groups?timezone_name=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")}`),
-    retry: (attempts, queryError) => attempts < 1 && isTransientApiError(queryError),
-    retryDelay: 1_000,
-  });
+  const taskData = useTaskData();
+  const { groups: data, fetching: isFetching, error, failureCount, retry: refetch, canWrite, saved, fetchedAt } = taskData;
+  const isPending = data === undefined && !error;
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["task-groups"] });
     qc.invalidateQueries({ queryKey: ["completed"] });
@@ -24,15 +22,15 @@ export default function TasksPage() {
   };
   const update = useMutation({
     mutationFn: ({ task, payload }: { task: Task; payload: Partial<TaskEditorPayload> }) =>
-      api<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+      taskData.mutate<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     onSuccess: refresh,
   });
   const complete = useMutation({
-    mutationFn: (task: Task) => api<Task>(`/tasks/${task.id}/complete`, { method: "POST" }),
+    mutationFn: (task: Task) => taskData.mutate<Task>(`/tasks/${task.id}/complete`, { method: "POST" }),
     onSuccess: refresh,
   });
   const remove = useMutation({
-    mutationFn: (task: Task) => api<void>(`/tasks/${task.id}`, { method: "DELETE" }),
+    mutationFn: (task: Task) => taskData.mutate<void>(`/tasks/${task.id}`, { method: "DELETE" }),
     onSuccess: refresh,
   });
   const hasData = data !== undefined;
@@ -61,9 +59,16 @@ export default function TasksPage() {
       ) : null}
       {hasData && isFetching ? (
         <p aria-live="polite" className="text-sm font-medium text-[var(--muted)]" role="status">
-          Syncing tasks...
+          {saved ? "Saved view · Updating…" : "Syncing tasks…"}
         </p>
       ) : null}
+      {hasData && !canWrite ? <div role="status" className="panel p-3 text-sm text-[var(--muted)]">
+        <p>{saved ? "Saved view" : "Previously loaded tasks"}{fetchedAt ? ` · Last refreshed ${new Date(fetchedAt).toLocaleString()}` : ""}.</p>
+        <p>Task changes are available after refreshing from Sway.</p>
+        {saved ? <p>Group names such as “Today” reflect when this view was saved, not the current date.</p> : null}
+        {!isFetching && !error ? <button className="btn btn-secondary mt-2" onClick={refetch}>Refresh tasks</button> : null}
+      </div> : null}
+      {complete.error || remove.error ? <p role="alert" className="panel p-3 text-sm">{complete.error?.message || remove.error?.message} No change has been confirmed. Refresh to check the latest task state.</p> : null}
       {error ? (
         <div aria-live="polite" className="rounded-xl border border-[#f2c6a8] bg-[#fff2e8] p-4 text-[#9a3412]" role="alert">
           <p className="font-bold">{hasData ? "Couldn’t refresh tasks." : errorMessage}</p>
@@ -79,10 +84,10 @@ export default function TasksPage() {
           </button>
         </div>
       ) : null}
-      {!isPending && !error && !(data ?? []).some((group) => group.tasks.length) ? (
+      {hasData && !error && !(data ?? []).some((group) => group.tasks.length) ? (
         <div className="panel px-5 py-8 text-center">
           <h2 className="text-lg font-bold">Your task list is clear</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">Use the + button to add your next task.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">{canWrite ? "Use the + button to add your next task." : "This saved list is empty. Refresh before adding tasks."}</p>
         </div>
       ) : null}
       <div className="space-y-5 lg:space-y-6">
@@ -93,10 +98,11 @@ export default function TasksPage() {
               {group.tasks.map((task) => (
                 <TaskCard
                   key={`${task.id}-${task.due_at ?? task.due_date ?? ""}-${task.is_preview}`}
-                  onComplete={(t) => complete.mutateAsync(t)}
-                  onDelete={(t) => remove.mutateAsync(t)}
+                  onComplete={(t) => complete.mutateAsync(t).catch(() => undefined)}
+                  onDelete={(t) => remove.mutateAsync(t).catch(() => undefined)}
                   onOpen={setEditing}
                   task={task}
+                  disabled={!canWrite}
                 />
               ))}
             </div>

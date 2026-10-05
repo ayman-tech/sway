@@ -4,15 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Task, TaskGroup } from "@/lib/types";
+import { useTaskData } from "@/components/task-data-provider";
 
 export default function CompletedPage() {
+  const taskData = useTaskData();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["completed"],
     queryFn: () => api<TaskGroup[]>("/tasks/completed"),
   });
   const uncomplete = useMutation({
-    mutationFn: (task: Task) => api<Task>(`/tasks/${task.id}/uncomplete`, { method: "POST" }),
+    mutationFn: (task: Task) => taskData.mutate<Task>(`/tasks/${task.id}/uncomplete`, { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["completed"] });
       qc.invalidateQueries({ queryKey: ["task-groups"] });
@@ -26,6 +28,7 @@ export default function CompletedPage() {
         <p className="mt-1 text-[#667085]">Recently completed tasks are kept for 30 days.</p>
       </div>
       {isLoading ? <p className="text-[#667085]">Loading completed tasks...</p> : null}
+      {uncomplete.error ? <p role="alert" className="panel p-3">{uncomplete.error.message} Restoration has not been confirmed.</p> : null}
       {(data ?? []).map((group) => (
         <section key={group.label}>
           <h2 className="mb-2.5 text-lg font-bold lg:mb-3 lg:text-xl lg:font-black">{group.label}</h2>
@@ -39,7 +42,7 @@ export default function CompletedPage() {
                       {task.completed_at ? new Date(task.completed_at).toLocaleString() : "Completed"}
                     </p>
                   </div>
-                  <button aria-label={`Restore ${task.title}`} className="btn btn-secondary shrink-0" onClick={() => uncomplete.mutate(task)}>
+                  <button disabled={!taskData.canWrite || uncomplete.isPending} aria-label={`Restore ${task.title}`} className="btn btn-secondary shrink-0" onClick={() => uncomplete.mutate(task)}>
                     <RotateCcw size={18} /> Restore
                   </button>
                 </div>

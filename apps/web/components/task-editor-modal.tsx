@@ -5,6 +5,7 @@ import { Loader2, X } from "lucide-react";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import type { Task } from "@/lib/types";
 import { useDialogBehavior } from "@/components/use-dialog-behavior";
+import { useTaskData } from "@/components/task-data-provider";
 
 export type TaskEditorPayload = {
   title: string;
@@ -115,6 +116,7 @@ export function TaskEditorModal({
   onSave: (payload: Partial<TaskEditorPayload>) => Promise<unknown>;
 }) {
   const readOnly = Boolean(task?.is_preview || task?.source === "google");
+  const { canWrite } = useTaskData();
   const allowReminderOnly = Boolean(task?.source === "google" && task?.due_at && !task?.is_preview);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -147,6 +149,7 @@ export function TaskEditorModal({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+    if (!canWrite) { setError("Reconnect and refresh tasks before saving. Your draft has not been submitted."); return; }
     if (readOnly && !allowReminderOnly) {
       onClose();
       return;
@@ -294,11 +297,12 @@ export function TaskEditorModal({
         {error ? <p className="mt-4 rounded-lg bg-[#fff2e8] p-3 text-sm font-bold text-[#9a3412]">{error}</p> : null}
 
         <div className="dialog-actions flex flex-wrap justify-end gap-3">
+          {!canWrite ? <p role="status" className="w-full text-sm text-[var(--muted)]">Task changes are paused until a fresh API response arrives. Your draft stays here.</p> : null}
           <button className="btn btn-secondary" onClick={onClose} type="button">
             Cancel
           </button>
           {readOnly && !allowReminderOnly ? null : (
-            <button className="btn btn-primary" disabled={saving} type="submit">
+            <button className="btn btn-primary" disabled={saving || !canWrite} type="submit">
               {saving ? <Loader2 className="animate-spin" size={18} /> : null}
               {mode === "create" ? "Add task" : "Save changes"}
             </button>

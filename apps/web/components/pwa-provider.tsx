@@ -103,7 +103,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       {children}
       {!isOnline ? (
         <div aria-live="polite" className="pwa-offline-banner" role="status">
-          You’re offline. Reconnect to view or change Sway data.
+          You’re offline. Any saved tasks shown are read-only. Reconnect to refresh or make changes.
         </div>
       ) : null}
     </PwaContext.Provider>

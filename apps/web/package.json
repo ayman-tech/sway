@@ -8,7 +8,8 @@
     "start": "HOSTNAME=127.0.0.1 node .next/standalone/server.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:push": "node --test scripts/test-push-sw.mjs"
+    "test:push": "node --test scripts/test-push-sw.mjs",
+    "test:snapshots": "node --experimental-strip-types --test scripts/test-task-snapshots.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.88.0",
@@ -29,6 +30,7 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.0.7",
+    "fake-indexeddb": "^6.2.5",
     "tailwindcss": "^4.1.17",
     "typescript": "^5.9.3"
   }

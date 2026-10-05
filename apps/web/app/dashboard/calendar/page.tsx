@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import type { Task } from "@/lib/types";
 import { LinkedText } from "@/components/linked-text";
 import { TaskEditorModal, type TaskEditorPayload } from "@/components/task-editor-modal";
+import { useTaskData } from "@/components/task-data-provider";
 
 function compareCalendarTasks(a: Task, b: Task) {
   if (Boolean(a.due_at) !== Boolean(b.due_at)) return a.due_at ? -1 : 1;
@@ -18,6 +19,7 @@ function compareCalendarTasks(a: Task, b: Task) {
 }
 
 export default function CalendarPage() {
+  const taskData = useTaskData();
   const qc = useQueryClient();
   const [month, setMonth] = useState(() => new Date());
   const [selected, setSelected] = useState(() => new Date());
@@ -25,7 +27,7 @@ export default function CalendarPage() {
   const today = useMemo(() => new Date(), []);
   const update = useMutation({
     mutationFn: ({ task, payload }: { task: Task; payload: Partial<TaskEditorPayload> }) =>
-      api<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+      taskData.mutate<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
   });
   const range = useMemo(() => {
@@ -132,6 +134,7 @@ export default function CalendarPage() {
                 className="min-w-0 w-full rounded-lg border border-[#e6ded2] bg-white p-3 text-left hover:border-[#c9bfb3] transition-colors"
                 key={`${task.id}-${task.due_at ?? task.due_date}`}
                 onClick={() => setEditing(task)}
+                disabled={!taskData.canWrite}
               >
                 <p className="break-words font-black">{task.title}</p>
                 {task.description ? (

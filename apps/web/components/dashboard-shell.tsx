@@ -25,6 +25,7 @@ import { useTheme } from "@/components/theme-provider";
 import { TaskEditorModal, type TaskEditorPayload } from "@/components/task-editor-modal";
 import { useDialogBehavior } from "@/components/use-dialog-behavior";
 import { usePush } from "@/components/push-provider";
+import { useTaskData } from "@/components/task-data-provider";
 
 const items = [
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
@@ -44,7 +45,7 @@ function itemIsActive(pathname: string, href: string) {
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
+  const taskData = useTaskData();
   const [shellSettingsSettled, setShellSettingsSettled] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -56,7 +57,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const moreDialogRef = useDialogBehavior<HTMLElement>(moreOpen, () => setMoreOpen(false));
   const create = useMutation({
     mutationFn: (payload: Partial<TaskEditorPayload>) =>
-      api<Task>("/tasks", { method: "POST", body: JSON.stringify(payload) }),
+      taskData.mutate<Task>("/tasks", { method: "POST", body: JSON.stringify(payload) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["task-groups"] });
       qc.invalidateQueries({ queryKey: ["completed"] });
@@ -66,32 +67,29 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) {
-        router.replace("/auth");
-      } else {
-        setReady(true);
-        api<UserSettings>("/settings")
+    const controller = new AbortController();
+        api<UserSettings>("/settings", { signal: controller.signal })
           .then(async (settings) => {
             let active = settings;
-            const metadata = data.session.user.user_metadata;
+            const metadata = taskData.session.user.user_metadata;
             if (!settings.first_name && metadata?.first_name) {
               active = await api<UserSettings>("/settings", {
+                signal: controller.signal,
                 method: "PATCH",
                 body: JSON.stringify({
                   first_name: metadata.first_name,
                   last_name: metadata.last_name ?? null,
                 }),
-              });
+              }, { expectedUserId: taskData.session.user.id });
             }
+            if (controller.signal.aborted) return;
             setTheme(active.theme);
             setDisplayName([active.first_name, active.last_name].filter(Boolean).join(" "));
           })
           .catch(() => undefined)
-          .finally(() => setShellSettingsSettled(true));
-      }
-    });
-  }, [router, setTheme]);
+          .finally(() => { if (!controller.signal.aborted) setShellSettingsSettled(true); });
+    return () => controller.abort();
+  }, [taskData.session.user.id, setTheme]);
 
   useEffect(() => {
     const updateName = (event: Event) => {
@@ -101,10 +99,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("sway-profile-updated", updateName);
     return () => window.removeEventListener("sway-profile-updated", updateName);
   }, []);
-
-  if (!ready) {
-    return <div className="grid min-h-screen place-items-center text-[#667085]">Loading Sway...</div>;
-  }
 
   const pageTitle = items.find((item) => itemIsActive(pathname, item.href))?.label ?? "Tasks";
   const initials = displayName
@@ -120,11 +114,13 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     try {
       setSignOutError("");
       await beforeSignOut();
+      await taskData.beforeSignOut();
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       qc.clear();
       router.replace("/");
     } catch (error) {
+      taskData.signOutFailed();
       setMoreOpen(false);
       setSignOutError(error instanceof Error ? error.message : "Unable to sign out. Try again.");
     }
@@ -136,7 +132,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <Link className="mb-8 flex items-center gap-2 text-2xl font-black" href="/">
           <Home size={22} /> Sway
         </Link>
-        <button className="btn btn-primary mb-5 w-full" onClick={() => setCreateOpen(true)} type="button">
+        <button className="btn btn-primary mb-5 w-full" disabled={!taskData.canWrite} title={!taskData.canWrite ? "Refresh tasks to enable changes" : undefined} onClick={() => { if (taskData.canWrite) setCreateOpen(true); }} type="button">
           <Plus size={18} /> Add task
         </button>
         <nav className="space-y-2">
@@ -178,6 +174,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="dashboard-main min-w-0 px-4 pt-4 lg:px-8 lg:py-6">
+        {!taskData.canWrite && !pathname.endsWith("/tasks") ? <div role="status" className="panel mb-4 p-3 text-sm">Task changes are available after refreshing from Sway. <button className="btn btn-secondary mt-2" disabled={taskData.fetching} onClick={taskData.retry}>{taskData.fetching ? "Updating…" : "Retry"}</button></div> : null}
         {signOutError ? <p role="alert" className="panel mb-4 p-4">{signOutError}</p> : null}
         <ReminderPoller />
         <GoogleSyncTrigger shellReady={shellSettingsSettled} />
@@ -186,9 +183,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
       <button
         aria-label="Add task"
+        disabled={!taskData.canWrite}
+        title={!taskData.canWrite ? "Refresh tasks to enable changes" : undefined}
         className="mobile-fab lg:hidden"
         hidden={pathname.startsWith("/dashboard/settings")}
-        onClick={() => setCreateOpen(true)}
+        onClick={() => { if (taskData.canWrite) setCreateOpen(true); }}
         type="button"
       >
         <Plus size={28} />

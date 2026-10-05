@@ -22,11 +22,13 @@ export function TaskCard({
   onOpen,
   onComplete,
   onDelete,
+  disabled = false,
 }: {
   task: Task;
   onOpen: (task: Task) => void;
   onComplete: (task: Task) => Promise<unknown>;
   onDelete: (task: Task) => Promise<void>;
+  disabled?: boolean;
 }) {
   return (
     <article className="task-card rounded-xl border border-[#e6ded2] bg-white transition hover:border-[var(--accent)]">
@@ -34,6 +36,7 @@ export function TaskCard({
         {!task.is_preview ? (
           <button
             aria-label={`Complete ${task.title}`}
+            disabled={disabled}
             className="task-complete-button"
             onClick={() => onComplete(task)}
             type="button"
@@ -42,7 +45,7 @@ export function TaskCard({
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
-          <button aria-label={`Open ${task.title}`} className="task-card-open" onClick={() => onOpen(task)} type="button">
+          <button disabled={disabled} aria-label={`Open ${task.title}`} className="task-card-open" onClick={() => onOpen(task)} type="button">
           <div className="flex flex-wrap items-center gap-2 text-left">
             <h3 className="font-bold">{task.title}</h3>
             {task.source === "google" ? (
@@ -60,7 +63,7 @@ export function TaskCard({
             </p>
           ) : null}
         </div>
-        {task.source !== "google" && !task.is_preview ? (
+        {!disabled && task.source !== "google" && !task.is_preview ? (
           <OverflowMenu
             actions={[{ label: "Delete task", icon: Trash2, danger: true, onSelect: () => onDelete(task) }]}
             label={`Actions for ${task.title}`}

@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
+import { withDeadline, measureTaskTiming } from "@/lib/request-deadline";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8010";
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -21,6 +22,7 @@ export class ApiError extends Error {
 
 export type ApiRequestOptions = {
   timeoutMs?: number;
+  expectedUserId?: string;
 };
 
 async function errorMessage(res: Response) {
@@ -34,49 +36,49 @@ async function errorMessage(res: Response) {
   return text || `Request failed: ${res.status}`;
 }
 
-async function token() {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token;
+export function boundedSession(signal?: AbortSignal) {
+  return withDeadline(() => supabase.auth.getSession(), DEFAULT_TIMEOUT_MS, signal);
 }
 
-async function request<T>(url: string, init: RequestInit, options: ApiRequestOptions): Promise<T> {
-  const controller = new AbortController();
-  const callerSignal = init.signal;
-  let timedOut = false;
-  const onCallerAbort = () => controller.abort(callerSignal?.reason);
-
-  if (callerSignal?.aborted) {
-    onCallerAbort();
-  } else {
-    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
-  }
-
-  const timeoutId = window.setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-
+async function request<T>(url: string, init: RequestInit, options: ApiRequestOptions, authenticated = false): Promise<T> {
   try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    if (!res.ok) {
-      throw new ApiError(await errorMessage(res), "http", res.status);
-    }
-    if (res.status === 204) {
-      return undefined as T;
-    }
-    return (await res.json()) as T;
+    return await withDeadline(async (signal) => {
+      const headers = new Headers(init.headers);
+      headers.set("Content-Type", "application/json");
+      if (authenticated) {
+        const started = performance.now();
+        const { data, error } = await supabase.auth.getSession();
+        measureTaskTiming("token-ready", started);
+        signal.throwIfAborted();
+        if (error) {
+          const unauthorized = error.status === 401 || error.status === 403;
+          throw new ApiError("Unable to restore your session. Try again.", unauthorized ? "http" : "network", unauthorized ? error.status : undefined);
+        }
+        if (!data.session) throw new ApiError("Not signed in.", "http", 401);
+        if (options.expectedUserId && data.session.user.id !== options.expectedUserId) throw new ApiError("Account changed. Reload Sway.", "aborted");
+        headers.set("Authorization", `Bearer ${data.session.access_token}`);
+      }
+      signal.throwIfAborted();
+      const started = performance.now();
+      const res = await fetch(url, { ...init, headers, signal });
+      if (url.includes("/tasks/groups")) measureTaskTiming("tasks-api", started, res.headers.get("X-Request-ID"));
+      if (!res.ok) {
+        throw new ApiError(await errorMessage(res), "http", res.status);
+      }
+      if (res.status === 204) {
+        return undefined as T;
+      }
+      return (await res.json()) as T;
+    }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS, init.signal);
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    if (timedOut) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
       throw new ApiError("Sway took too long to respond.", "timeout");
     }
-    if (callerSignal?.aborted) {
+    if (init.signal?.aborted || error instanceof DOMException && error.name === "AbortError") {
       throw new ApiError("Request cancelled.", "aborted");
     }
     throw new ApiError("Unable to reach Sway. Check your connection and try again.", "network");
-  } finally {
-    window.clearTimeout(timeoutId);
-    callerSignal?.removeEventListener("abort", onCallerAbort);
   }
 }
 
@@ -92,22 +94,7 @@ export async function api<T>(
   init: RequestInit = {},
   options: ApiRequestOptions = {},
 ): Promise<T> {
-  const accessToken = await token();
-  if (!accessToken) {
-    throw new ApiError("Not signed in.", "http", 401);
-  }
-  return request<T>(
-    `${API_URL}${path}`,
-    {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        ...(init.headers ?? {}),
-      },
-    },
-    options,
-  );
+  return request<T>(`${API_URL}${path}`, init, options, true);
 }
 
 export async function publicApi<T>(

@@ -9,6 +9,7 @@ import { useTheme, type ThemePreference } from "@/components/theme-provider";
 import { GoogleSetupModal } from "@/components/google-setup-modal";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { PushSettingsCard } from "@/components/push-settings-card";
+import { TaskCacheSettings } from "@/components/task-cache-settings";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -195,6 +196,7 @@ export default function SettingsPage() {
         </select>
       </div>
       <PwaInstallCard />
+      <TaskCacheSettings />
       <PushSettingsCard />
       <div className="panel p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">

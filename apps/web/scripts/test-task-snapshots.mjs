@@ -5,6 +5,7 @@ import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, load
   quarantineSnapshots, readSnapshotTicket, saveTaskSnapshot, setSnapshotPreference,
   validSnapshot, SNAPSHOT_TTL, SNAPSHOT_LIMIT } from "../lib/task-snapshots.ts";
 import { withDeadline } from "../lib/request-deadline.ts";
+import { formatLastSync, localDay, regroupSavedTasks } from "../lib/task-view.ts";
 
 beforeEach(() => {
   globalThis.indexedDB = new IDBFactory();
@@ -26,6 +27,66 @@ const task = {
 };
 const groups = [{ label: "Today", overdue: false, tasks: [task], has_more: false }];
 const snapshot = () => ({ version: 1, userId: "a", timezone: "UTC", fetchedAt: Date.now(), groups });
+
+test("saved tasks regroup against today without changing the saved response", () => {
+  const original = [{ label: "Today", overdue: false, tasks: [
+    { ...task, id: "yesterday", due_date: "2026-10-06" },
+    { ...task, id: "today", due_date: "2026-10-07" },
+    { ...task, id: "week-end", due_date: "2026-10-14" },
+    { ...task, id: "later", due_date: "2026-10-15" },
+    { ...task, id: "untimed" },
+  ] }];
+  const before = structuredClone(original);
+  const result = regroupSavedTasks(original, "2026-10-07", "America/New_York");
+  assert.deepEqual(result.map((group) => [group.label, group.tasks[0].id]), [
+    ["Overdue", "yesterday"], ["Today", "today"], ["Next 7 Days", "week-end"], ["Untimed", "untimed"], ["Later", "later"],
+  ]);
+  assert.equal(result[0].overdue, true);
+  assert.deepEqual(original, before);
+});
+test("timed tasks use local dates; date-only tasks never shift across timezones", () => {
+  const input = [{ label: "Today", overdue: false, tasks: [
+    { ...task, id: "utc-today-local-yesterday", due_at: "2026-10-07T01:00:00Z" },
+    { ...task, id: "date-only", due_date: "2026-10-07" },
+    { ...task, id: "earlier-today", due_at: "2026-10-07T04:00:00Z" },
+  ] }];
+  const result = regroupSavedTasks(input, "2026-10-07", "America/New_York");
+  assert.equal(result[0].tasks[0].id, "utc-today-local-yesterday");
+  assert.deepEqual(result[1].tasks.map((item) => item.id), ["earlier-today", "date-only"]);
+});
+test("calendar-day week boundary survives DST and year rollover", () => {
+  const group = (dates) => [{ label: "Later", overdue: false, tasks: dates.map((due_date) => ({ ...task, due_date })) }];
+  const dst = regroupSavedTasks(group(["2026-11-07", "2026-11-08"]), "2026-10-31", "America/New_York");
+  assert.deepEqual(dst.map((item) => item.label), ["Next 7 Days", "Later"]);
+  const year = regroupSavedTasks(group(["2027-01-06", "2027-01-07"]), "2026-12-30", "UTC");
+  assert.deepEqual(year.map((item) => item.label), ["Next 7 Days", "Later"]);
+});
+test("sorts timed tasks chronologically and untimed tasks newest-first", () => {
+  const input = [{ label: "old", overdue: false, tasks: [
+    { ...task, id: "late", due_at: "2026-10-07T16:00:00Z" },
+    { ...task, id: "early", due_at: "2026-10-07T08:00:00Z" },
+    { ...task, id: "old" },
+    { ...task, id: "new", created_at: "2026-10-06T00:00:00Z" },
+  ] }];
+  const result = regroupSavedTasks(input, "2026-10-07", "UTC");
+  assert.deepEqual(result[0].tasks.map((item) => item.id), ["early", "late"]);
+  assert.deepEqual(result[1].tasks.map((item) => item.id), ["new", "old"]);
+});
+test("retains known recurring previews without generating new occurrences", () => {
+  const input = [{ label: "Today", overdue: false, tasks: [
+    { ...task, due_date: "2026-10-06", recurrence_rule: "FREQ=DAILY" },
+    { ...task, due_date: "2026-10-07", recurrence_rule: "FREQ=DAILY", is_preview: true },
+  ] }];
+  const result = regroupSavedTasks(input, "2026-10-07", "UTC");
+  assert.equal(result.flatMap((group) => group.tasks).length, 2);
+  assert.equal(result[1].tasks[0].is_preview, true);
+  assert.deepEqual(regroupSavedTasks([], "2026-10-07", "UTC"), []);
+});
+test("formats last sync with explicit local DD/MM/YYYY and 24-hour seconds", () => {
+  assert.equal(formatLastSync(Date.parse("2026-10-07T13:30:15Z"), "America/New_York"), "07/10/2026 09:30:15");
+  assert.equal(formatLastSync(Date.parse("2026-10-07T00:00:00Z"), "UTC"), "07/10/2026 00:00:00");
+  assert.equal(localDay(new Date("2026-10-07T01:00:00Z"), "America/New_York"), "2026-10-06");
+});
 async function seed() {
   await claimSnapshotOwner("a");
   const ticket = await readSnapshotTicket("a");

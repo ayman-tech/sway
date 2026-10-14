@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import { api, ApiError, boundedSession, isTransientApiError } from "@/lib/api";
+import { api, ApiError, boundedSession } from "@/lib/api";
+import { resumeTaskRead, shouldRetryTaskRead, taskRetryDelay } from "@/lib/task-recovery";
 import type { TaskGroup } from "@/lib/types";
 import { measureTaskTiming } from "@/lib/request-deadline";
 import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, IDLE_LIMIT, loadTaskSnapshot,
@@ -14,7 +15,7 @@ import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, IDLE
 
 type TaskData = {
   session: Session; groups: TaskGroup[] | undefined; saved: boolean; fetchedAt: number | null;
-  canWrite: boolean; fetching: boolean; error: Error | null; failureCount: number;
+  canWrite: boolean; fetching: boolean; waitingForNetwork: boolean; error: Error | null; failureCount: number;
   retry: () => void; mutate: <T>(path: string, init: RequestInit) => Promise<T>;
   cacheEnabled: boolean; cacheWarning: string; setCacheEnabled: (enabled: boolean) => Promise<void>;
   beforeSignOut: () => Promise<void>;
@@ -104,11 +105,12 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted.current = false; ++authSequence.current; ++generation.current; data.subscription.unsubscribe(); };
   }, [acceptSession, restoreSession]);
 
-  const tasks = useQuery({
+  const tasks = useQuery<TaskGroup[], Error>({
     queryKey,
     enabled: Boolean(session) && !authError && !loggingOut.current,
     staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false,
-    retry: (count, error) => count < 1 && isTransientApiError(error), retryDelay: 1000,
+    networkMode: "online",
+    retry: shouldRetryTaskRead, retryDelay: taskRetryDelay,
     queryFn: async ({ signal }) => {
       const userId = session!.user.id;
       const epoch = generation.current;
@@ -177,21 +179,35 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setOnline(navigator.onLine);
+    onlineManager.setOnline(navigator.onLine);
+    let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleResume = (mustLock = false) => {
+      if (mustLock) lock();
+      clearTimeout(resumeTimer);
+      const userId = identity.current;
+      const state = qc.getQueryState(["task-groups", userId, timezone]);
+      if (state && state.fetchStatus !== "idle") return;
+      resumeTimer = setTimeout(() => {
+        if (!mounted.current || !userId || identity.current !== userId || loggingOut.current || busy.current || !navigator.onLine) return;
+        void resumeTaskRead(qc, ["task-groups", userId, timezone]);
+      }, 200);
+    };
     const resume = () => {
+      if (document.hidden) return;
       const now = Date.now();
       const idle = now - (hiddenAt.current ?? lastActivity.current) >= IDLE_LIMIT;
       hiddenAt.current = null; lastActivity.current = now;
       const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-      if (zone !== timezone) { lock(); generation.current++; setSnapshot(null); setFetchedAt(null); setTimezone(zone); }
-      revalidate(idle);
+      if (zone !== timezone) { lock(); generation.current++; setSnapshot(null); setFetchedAt(null); setTimezone(zone); return; }
+      scheduleResume(idle);
     };
     const visibility = () => { if (document.hidden) hiddenAt.current = Date.now(); else resume(); };
     const activity = () => {
-      if (Date.now() - lastActivity.current >= IDLE_LIMIT) revalidate(true);
+      if (Date.now() - lastActivity.current >= IDLE_LIMIT) scheduleResume(true);
       lastActivity.current = Date.now();
     };
-    const offline = () => { setOnline(false); lock(); generation.current++; };
-    const reconnect = () => { setOnline(true); revalidate(true); };
+    const offline = () => { setOnline(false); lock(); onlineManager.setOnline(false); };
+    const reconnect = () => { setOnline(true); lock(); onlineManager.setOnline(true); scheduleResume(); };
     const notice = (value: Notice) => {
       if (value === "logout") { generation.current++; lock(); setSession(null); setSnapshot(null); setAuthError("Signed out in another tab. Sign in again to continue."); void qc.cancelQueries().then(() => qc.clear()); }
       else if (value === "preference") {
@@ -212,6 +228,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("pointerdown", activity, { passive: true, capture: true }); window.addEventListener("keydown", activity, true);
     window.addEventListener("storage", storage); document.addEventListener("visibilitychange", visibility);
     return () => {
+      clearTimeout(resumeTimer);
       channel?.close(); window.removeEventListener("focus", resume); window.removeEventListener("online", reconnect); window.removeEventListener("offline", offline);
       window.removeEventListener("pointerdown", activity, true); window.removeEventListener("keydown", activity, true);
       window.removeEventListener("storage", storage); document.removeEventListener("visibilitychange", visibility);
@@ -253,6 +270,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
   return <Context.Provider value={{ session, groups: tasks.data ?? snapshot?.groups, saved: tasks.data === undefined && Boolean(snapshot),
     fetchedAt: tasks.data === undefined ? snapshot?.fetchedAt ?? null : fetchedAt,
     canWrite: !locked && online && !tasks.error && !busy.current, fetching: tasks.isFetching,
+    waitingForNetwork: !online || tasks.fetchStatus === "paused",
     error: tasks.error, failureCount: tasks.failureCount, retry: () => revalidate(true), mutate,
     cacheEnabled, cacheWarning,
     setCacheEnabled: async (enabled) => {

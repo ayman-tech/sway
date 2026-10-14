@@ -5,6 +5,94 @@ import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, load
   quarantineSnapshots, readSnapshotTicket, saveTaskSnapshot, setSnapshotPreference,
   validSnapshot, SNAPSHOT_TTL, SNAPSHOT_LIMIT } from "../lib/task-snapshots.ts";
 import { withDeadline } from "../lib/request-deadline.ts";
+import { QueryClient, QueryObserver, onlineManager } from "@tanstack/react-query";
+import { resumeTaskRead, shouldRetryTaskRead, taskRetryDelay } from "../lib/task-recovery.ts";
+
+function failure(kind, status) {
+  return Object.assign(new Error("test failure"), { name: "ApiError", kind, status });
+}
+
+test("task reads retry timeout/network/429/5xx twice, never auth/client/cancellation errors", () => {
+  for (const error of [failure("timeout"), failure("network"), failure("http", 429), failure("http", 502)]) {
+    assert.equal(shouldRetryTaskRead(0, error), true);
+    assert.equal(shouldRetryTaskRead(1, error), true);
+    assert.equal(shouldRetryTaskRead(2, error), false);
+  }
+  for (const error of [failure("aborted"), failure("http", 401), failure("http", 403), failure("http", 400), new Error("other")]) {
+    assert.equal(shouldRetryTaskRead(0, error), false);
+  }
+  assert.equal(taskRetryDelay(0), 2000);
+  assert.equal(taskRetryDelay(1), 5000);
+});
+
+test("task query succeeds automatically after two failed reads and keeps old data", async () => {
+  const client = new QueryClient();
+  const queryKey = ["task-groups", "recovery"];
+  client.setQueryData(queryKey, ["saved"]);
+  let calls = 0;
+  try {
+    const result = await client.fetchQuery({ queryKey, retry: shouldRetryTaskRead, retryDelay: 0,
+      queryFn: async () => {
+        assert.deepEqual(client.getQueryData(queryKey), ["saved"]);
+        if (++calls < 3) throw failure("timeout");
+        return ["fresh"];
+      },
+    });
+    assert.deepEqual(result, ["fresh"]);
+    assert.equal(calls, 3);
+  } finally { client.clear(); }
+});
+
+test("repeated resume events do not abort or restart an active read", async () => {
+  const client = new QueryClient();
+  const queryKey = ["task-groups", "resume"];
+  let calls = 0, release, signal;
+  const observer = new QueryObserver(client, { queryKey, queryFn: (context) => {
+    calls++; signal = context.signal;
+    return new Promise((resolve) => { release = resolve; });
+  } });
+  const unsubscribe = observer.subscribe(() => {});
+  try {
+    await Promise.all([resumeTaskRead(client, queryKey), resumeTaskRead(client, queryKey), resumeTaskRead(client, queryKey)]);
+    assert.equal(calls, 1);
+    assert.equal(signal.aborted, false);
+    release([]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  } finally { unsubscribe(); client.clear(); }
+});
+
+test("offline task reads pause and resume on connectivity without duplicate requests", async () => {
+  const client = new QueryClient();
+  client.mount();
+  onlineManager.setOnline(false);
+  const queryKey = ["task-groups", "offline"];
+  let calls = 0;
+  try {
+    const pending = client.fetchQuery({ queryKey, networkMode: "online", retry: shouldRetryTaskRead,
+      queryFn: async () => { calls++; return []; },
+    });
+    await resumeTaskRead(client, queryKey);
+    assert.equal(calls, 0);
+    assert.equal(client.getQueryState(queryKey).fetchStatus, "paused");
+    onlineManager.setOnline(true);
+    await pending;
+    assert.equal(calls, 1);
+  } finally { onlineManager.setOnline(true); client.unmount(); client.clear(); }
+});
+
+test("exhausted recovery stops after three attempts and preserves previously loaded data", async () => {
+  const client = new QueryClient();
+  const queryKey = ["task-groups", "exhausted"];
+  client.setQueryData(queryKey, ["saved"]);
+  let calls = 0;
+  try {
+    await assert.rejects(client.fetchQuery({ queryKey, retry: shouldRetryTaskRead, retryDelay: 0,
+      queryFn: async () => { calls++; throw failure("timeout"); },
+    }));
+    assert.equal(calls, 3);
+    assert.deepEqual(client.getQueryData(queryKey), ["saved"]);
+  } finally { client.clear(); }
+});
 import { formatLastSync, localDay, regroupSavedTasks } from "../lib/task-view.ts";
 
 beforeEach(() => {

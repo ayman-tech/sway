@@ -19,7 +19,7 @@ export default function TasksPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Task | null>(null);
   const taskData = useTaskData();
-  const { groups: data, fetching: isFetching, error, failureCount, retry: refetch, canWrite, saved, fetchedAt } = taskData;
+  const { groups: data, fetching: isFetching, waitingForNetwork, error, failureCount, retry: refetch, canWrite, saved, fetchedAt } = taskData;
   const [dateContext, setDateContext] = useState(currentDateContext);
   useEffect(() => {
     const refreshDate = () => {
@@ -38,7 +38,7 @@ export default function TasksPage() {
   const displayGroups = useMemo(() => data && (saved || !canWrite)
     ? regroupSavedTasks(data, dateContext.today, dateContext.timezone) : data,
   [data, saved, canWrite, dateContext]);
-  const isPending = data === undefined && !error;
+  const isPending = data === undefined && (!error || isFetching || waitingForNetwork);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["task-groups"] });
     qc.invalidateQueries({ queryKey: ["completed"] });
@@ -58,7 +58,7 @@ export default function TasksPage() {
     onSuccess: refresh,
   });
   const hasData = data !== undefined;
-  const reconnecting = !hasData && isPending && failureCount > 0;
+  const reconnecting = isFetching && failureCount > 0;
   const errorMessage = error instanceof ApiError ? error.message : "Unable to load tasks.";
 
   return (
@@ -70,7 +70,7 @@ export default function TasksPage() {
       {!hasData && isPending ? (
         <div aria-live="polite" aria-busy="true" className="space-y-3" role="status">
           <p className="text-sm font-medium text-[var(--muted)]">
-            {reconnecting ? "Reconnecting to Sway..." : "Loading tasks..."}
+            {waitingForNetwork ? "Waiting for connection…" : reconnecting ? "Reconnecting…" : "Loading tasks..."}
           </p>
           {[0, 1, 2].map((item) => (
             <div
@@ -82,13 +82,13 @@ export default function TasksPage() {
         </div>
       ) : null}
       {hasData && (isFetching || !canWrite || error) ? <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
-        <span>{isFetching ? "Sync in progress" : error ? "Saved tasks · Couldn’t sync" : "Saved tasks · Waiting to sync"}</span>
+        <span>{waitingForNetwork ? "Saved tasks · Waiting for connection…" : reconnecting ? "Reconnecting…" : isFetching ? "Sync in progress" : error ? "Saved tasks · Couldn’t sync" : "Saved tasks · Waiting to sync"}</span>
         {fetchedAt !== null ? <span>· Last sync: <time dateTime={new Date(fetchedAt).toISOString()}>{formatLastSync(fetchedAt, dateContext.timezone)}</time></span> : null}
         {!canWrite ? <span className="sr-only">Tasks are read-only until refresh succeeds.</span> : null}
-        {!isFetching ? <button className="min-h-11 min-w-11 rounded px-2 font-semibold underline focus-visible:outline focus-visible:outline-2" onClick={refetch} type="button">Retry</button> : null}
+        {error && !isFetching && !waitingForNetwork ? <button className="btn btn-secondary min-h-11 gap-2" onClick={refetch} type="button"><RefreshCw size={16} aria-hidden="true" />Retry</button> : null}
       </div> : null}
       {complete.error || remove.error ? <p role="alert" className="panel p-3 text-sm">{complete.error?.message || remove.error?.message} No change has been confirmed. Refresh to check the latest task state.</p> : null}
-      {error && !hasData ? (
+      {error && !hasData && !isFetching && !waitingForNetwork ? (
         <div aria-live="polite" className="rounded-xl border border-[#f2c6a8] bg-[#fff2e8] p-4 text-[#9a3412]" role="alert">
           <p className="font-bold">{errorMessage}</p>
           <button

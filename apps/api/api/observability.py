@@ -25,15 +25,16 @@ def reset_request_id(token: Token[str]) -> None:
     _request_id.reset(token)
 
 
-def log_upstream_failure(category: str, exc: Exception) -> None:
+def log_upstream_failure(category: str, exc: Exception, *, upstream_status: int | None = None) -> None:
     """Log only a safe failure category and exception type."""
 
     logger.warning(
-        "upstream_failure request_id=%s pid=%s category=%s error_type=%s",
+        "upstream_failure request_id=%s pid=%s category=%s error_type=%s upstream_status=%s",
         request_id(),
         os.getpid(),
         category,
         type(exc).__name__,
+        upstream_status if type(upstream_status) is int and 100 <= upstream_status <= 599 else "unknown",
     )
 
 

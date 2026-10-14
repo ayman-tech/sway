@@ -13,6 +13,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from postgrest.exceptions import APIError as PostgrestAPIError
 from sway_core.datetime_utils import from_iso, utc_now
 from sway_core.reminders import reminder_events_between
 
@@ -51,6 +52,7 @@ from api.schemas import (
 from api.settings import get_user_settings, update_user_settings
 from api.push import router as push_router
 from api.supabase_clients import close_supabase_clients, initialize_supabase_clients
+from api.upstream_errors import retryable_gateway_status
 from api.tasks import (
     TaskStore,
     calendar_for,
@@ -92,6 +94,16 @@ app.add_middleware(
 
 def _upstream_error(status_code: int, detail: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"detail": detail})
+
+
+@app.exception_handler(PostgrestAPIError)
+async def supabase_gateway_error(_request: Request, exc: PostgrestAPIError) -> JSONResponse:
+    upstream_status = retryable_gateway_status(exc)
+    if upstream_status is None:
+        # Preserve existing behavior for genuine database/auth/validation errors.
+        raise exc
+    log_upstream_failure("data_gateway_response", exc, upstream_status=upstream_status)
+    return _upstream_error(status.HTTP_503_SERVICE_UNAVAILABLE, "Data service is temporarily unavailable. Please try again.")
 
 
 @app.exception_handler(httpx.PoolTimeout)

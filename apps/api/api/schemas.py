@@ -66,6 +66,8 @@ class SettingsOut(BaseModel):
     theme: str = "system"
     reminders_processed_through: datetime | None = None
     browser_notifications_enabled: bool = False
+    work_start_hour: int = 9
+    work_end_hour: int = 18
 
 
 class SettingsUpdate(BaseModel):
@@ -74,6 +76,19 @@ class SettingsUpdate(BaseModel):
     theme: str | None = None
     reminders_processed_through: datetime | None = None
     browser_notifications_enabled: bool | None = None
+    work_start_hour: int | None = Field(default=None, ge=0, le=23)
+    work_end_hour: int | None = Field(default=None, ge=1, le=24)
+
+
+class WorkLogEntryOut(BaseModel):
+    entry_date: date
+    hour_slot: int
+    note: str
+
+
+class WorkLogPut(BaseModel):
+    note: str = Field(max_length=2000)
+    today: date
 
 
 class ReminderOut(BaseModel):

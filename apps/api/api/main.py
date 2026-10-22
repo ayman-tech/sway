@@ -48,8 +48,11 @@ from api.schemas import (
     TaskGroupOut,
     TaskOut,
     TaskUpdate,
+    WorkLogEntryOut,
+    WorkLogPut,
 )
 from api.settings import get_user_settings, update_user_settings
+from api.worklog import list_entries, put_entry
 from api.push import router as push_router
 from api.supabase_clients import close_supabase_clients, initialize_supabase_clients
 from api.upstream_errors import retryable_gateway_status
@@ -287,6 +290,21 @@ def patch_settings(payload: SettingsUpdate, user: CurrentUser = Depends(get_curr
     if user.is_api_key:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available via API key.")
     return update_user_settings(user, payload)
+
+
+@app.get("/worklog", response_model=list[WorkLogEntryOut])
+def get_worklog(today: date, user: CurrentUser = Depends(get_current_user)) -> list[WorkLogEntryOut]:
+    return list_entries(user, today)
+
+
+@app.put("/worklog/{entry_date}/{hour}", response_model=WorkLogEntryOut)
+def put_worklog(
+    entry_date: date,
+    hour: int,
+    payload: WorkLogPut,
+    user: CurrentUser = Depends(get_current_user),
+) -> WorkLogEntryOut:
+    return put_entry(user, entry_date, hour, payload.note, payload.today)
 
 
 @app.get("/reminders/due", response_model=ReminderBatchOut)

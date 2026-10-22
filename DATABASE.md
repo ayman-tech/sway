@@ -13,6 +13,7 @@ erDiagram
     AUTH_USERS ||--o| USER_SETTINGS : has
     AUTH_USERS ||--o| GOOGLE_CALENDAR_CONNECTIONS : connects
     AUTH_USERS ||--o{ AVAILABILITY_SHARES : creates
+    AUTH_USERS ||--o{ WORK_LOG_ENTRIES : logs
 
     AUTH_USERS {
         uuid id PK
@@ -78,6 +79,14 @@ erDiagram
         timestamptz created_at
         timestamptz expires_at
     }
+
+    WORK_LOG_ENTRIES {
+        uuid user_id PK,FK
+        date entry_date PK
+        smallint hour_slot PK
+        text note
+        timestamptz updated_at
+    }
 ```
 
 ### Supabase Table Purposes
@@ -89,9 +98,10 @@ erDiagram
 | `public.user_settings` | Per-user profile names and web settings such as theme and notification state. | Users can access only their own row through RLS. |
 | `public.google_calendar_connections` | Encrypted per-user Google OAuth credentials/tokens and calendar sync state. | API service-role access only; no public RLS policies. |
 | `public.availability_shares` | Frozen public availability snapshots that expire after seven days. | API service-role access only; no public RLS policies. |
+| `public.work_log_entries` | Free-form hourly work log notes (local shift day + clock hour). The API keeps only today and the 6 previous days. | Users can access only their own rows through RLS. |
 
 All public tables referencing `auth.users` use `ON DELETE CASCADE`, so deleting an account
-also deletes its cloud tasks, settings, Google connection, and availability shares.
+also deletes its cloud tasks, settings, Google connection, availability shares, and work log.
 
 First and last names live on `public.user_settings`; a separate profiles table is not currently needed.
 New availability shares freeze only the creator's first name for their public heading.

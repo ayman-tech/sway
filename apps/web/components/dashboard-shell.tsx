@@ -12,6 +12,7 @@ import {
   ListTodo,
   LogOut,
   MoreHorizontal,
+  NotebookPen,
   Plus,
   Settings,
   X,
@@ -30,6 +31,7 @@ import { useTaskData } from "@/components/task-data-provider";
 const items = [
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/dashboard/worklog", label: "Work log", icon: NotebookPen },
   { href: "/dashboard/availability", label: "Availability", icon: CalendarCheck },
   { href: "/dashboard/completed", label: "Completed", icon: CheckCircle2 },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -186,7 +188,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         disabled={!taskData.canWrite}
         title={!taskData.canWrite ? "Refresh tasks to enable changes" : undefined}
         className="mobile-fab lg:hidden"
-        hidden={pathname.startsWith("/dashboard/settings")}
+        hidden={pathname.startsWith("/dashboard/settings") || pathname.startsWith("/dashboard/worklog")}
         onClick={() => { if (taskData.canWrite) setCreateOpen(true); }}
         type="button"
       >

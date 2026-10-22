@@ -84,6 +84,11 @@ alter table public.user_settings add column if not exists last_name text;
 alter table public.user_settings add column if not exists api_key_hash text unique;
 alter table public.user_settings add column if not exists api_key_ciphertext text;
 alter table public.user_settings add column if not exists api_key_created_at timestamptz;
+-- Work log schedule: end <= start means the schedule crosses midnight (night shift).
+alter table public.user_settings add column if not exists work_start_hour smallint not null default 9
+    check (work_start_hour between 0 and 23);
+alter table public.user_settings add column if not exists work_end_hour smallint not null default 18
+    check (work_end_hour between 1 and 24);
 
 alter table public.user_settings enable row level security;
 
@@ -99,6 +104,40 @@ create policy "user_settings_insert_own" on public.user_settings
 create policy "user_settings_update_own" on public.user_settings
     for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "user_settings_delete_own" on public.user_settings
+    for delete using (auth.uid() = user_id);
+
+-- Hourly work log. entry_date is the user's local "shift day" and hour_slot the
+-- local clock hour, so no timezone is stored. The API keeps a rolling 7 days.
+create table if not exists public.work_log_entries (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    entry_date date not null,
+    hour_slot smallint not null check (hour_slot between 0 and 23),
+    note text not null check (char_length(note) <= 2000),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, entry_date, hour_slot)
+);
+
+create index if not exists idx_work_log_entries_user_date
+    on public.work_log_entries (user_id, entry_date);
+
+drop trigger if exists work_log_entries_set_updated_at on public.work_log_entries;
+create trigger work_log_entries_set_updated_at before insert or update on public.work_log_entries
+    for each row execute function public.set_updated_at();
+
+alter table public.work_log_entries enable row level security;
+
+drop policy if exists "work_log_entries_select_own" on public.work_log_entries;
+drop policy if exists "work_log_entries_insert_own" on public.work_log_entries;
+drop policy if exists "work_log_entries_update_own" on public.work_log_entries;
+drop policy if exists "work_log_entries_delete_own" on public.work_log_entries;
+
+create policy "work_log_entries_select_own" on public.work_log_entries
+    for select using (auth.uid() = user_id);
+create policy "work_log_entries_insert_own" on public.work_log_entries
+    for insert with check (auth.uid() = user_id);
+create policy "work_log_entries_update_own" on public.work_log_entries
+    for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "work_log_entries_delete_own" on public.work_log_entries
     for delete using (auth.uid() = user_id);
 
 create table if not exists public.google_calendar_connections (

@@ -10,6 +10,7 @@ import { GoogleSetupModal } from "@/components/google-setup-modal";
 import { PwaInstallCard } from "@/components/pwa-install-card";
 import { PushSettingsCard } from "@/components/push-settings-card";
 import { TaskCacheSettings } from "@/components/task-cache-settings";
+import { WorkScheduleSettings } from "@/components/work-schedule-settings";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -195,6 +196,7 @@ export default function SettingsPage() {
           <option value="dark">Dark</option>
         </select>
       </div>
+      <WorkScheduleSettings />
       <PwaInstallCard />
       <TaskCacheSettings />
       <PushSettingsCard />

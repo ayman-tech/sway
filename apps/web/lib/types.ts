@@ -35,6 +35,14 @@ export type UserSettings = {
   theme: "light" | "dark" | "system";
   reminders_processed_through: string | null;
   browser_notifications_enabled: boolean;
+  work_start_hour: number;
+  work_end_hour: number;
+};
+
+export type WorkLogEntry = {
+  entry_date: string;
+  hour_slot: number;
+  note: string;
 };
 
 export type GoogleStatus = {

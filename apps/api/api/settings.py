@@ -26,6 +26,8 @@ def get_user_settings(user: CurrentUser) -> SettingsOut:
         theme=row.get("theme") or "system",
         reminders_processed_through=from_iso(row.get("reminders_processed_through")),
         browser_notifications_enabled=bool(row.get("browser_notifications_enabled")),
+        work_start_hour=row.get("work_start_hour") if row.get("work_start_hour") is not None else DEFAULT_SETTINGS.work_start_hour,
+        work_end_hour=row.get("work_end_hour") or DEFAULT_SETTINGS.work_end_hour,
     )
 
 
@@ -41,6 +43,8 @@ def update_user_settings(user: CurrentUser, payload: SettingsUpdate) -> Settings
         "theme": merged["theme"],
         "reminders_processed_through": to_iso(merged["reminders_processed_through"]),
         "browser_notifications_enabled": merged["browser_notifications_enabled"],
+        "work_start_hour": merged["work_start_hour"],
+        "work_end_hour": merged["work_end_hour"],
     }
     try:
         user.client.table("user_settings").upsert(row).execute()

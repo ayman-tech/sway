@@ -23,20 +23,26 @@ export function TaskCard({
   onComplete,
   onDelete,
   disabled = false,
+  completeDisabled = disabled,
+  leaving = false,
 }: {
   task: Task;
   onOpen: (task: Task) => void;
   onComplete: (task: Task) => Promise<unknown>;
   onDelete: (task: Task) => Promise<void>;
   disabled?: boolean;
+  completeDisabled?: boolean;
+  leaving?: boolean;
 }) {
   return (
+    <div aria-hidden={leaving || undefined} className={`task-card-wrap ${leaving ? "is-leaving" : ""}`} inert={leaving}>
+    <div>
     <article className="task-card rounded-xl border border-[#e6ded2] bg-white transition hover:border-[var(--accent)]">
       <div className="flex items-start gap-2 sm:gap-3">
         {!task.is_preview ? (
           <button
             aria-label={`Complete ${task.title}`}
-            disabled={disabled}
+            disabled={completeDisabled}
             className="task-complete-button"
             onClick={() => onComplete(task)}
             type="button"
@@ -71,5 +77,7 @@ export function TaskCard({
         ) : null}
       </div>
     </article>
+    </div>
+    </div>
   );
 }

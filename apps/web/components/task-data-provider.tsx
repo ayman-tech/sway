@@ -16,7 +16,7 @@ import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, IDLE
 
 type TaskData = {
   session: Session; groups: TaskGroup[] | undefined; saved: boolean; fetchedAt: number | null;
-  canWrite: boolean; fetching: boolean; firstLoadSettled: boolean; releaseTasks: (path: string) => void; waitingForNetwork: boolean; error: Error | null; failureCount: number;
+  canWrite: boolean; canQueue: boolean; syncing: boolean; fetching: boolean; firstLoadSettled: boolean; releaseTasks: (path: string) => void; waitingForNetwork: boolean; error: Error | null; failureCount: number;
   retry: () => void; mutate: <T>(path: string, init: RequestInit) => Promise<T>;
   cacheEnabled: boolean; cacheWarning: string; setCacheEnabled: (enabled: boolean) => Promise<void>;
   beforeSignOut: () => Promise<void>;
@@ -28,6 +28,8 @@ const channelName = "sway-task-view";
 // "/dashboard" is the brief stop before the start-page redirect lands on one of these pages.
 const HOLD_PATHS = new Set(["/dashboard", "/dashboard/worklog"]);
 const HOLD_FALLBACK_MS = 8_000;
+// Safety net so the "syncing" state can't stick if the follow-up refresh never starts.
+const SETTLE_FALLBACK_MS = 15_000;
 type Notice = "logout" | "changed" | "mutation-start" | "mutation-end" | "preference";
 function notify(notice: Notice) {
   if (typeof BroadcastChannel !== "undefined") {
@@ -53,6 +55,15 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
   const authSequence = useRef(0);
   const writable = useRef(false);
   const busy = useRef(false);
+  // Mutations this tab started and hasn't finished; further changes queue behind them.
+  const ownPending = useRef(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const mutationStarted = useRef(false);
+  const tail = useRef<Promise<unknown>>(Promise.resolve());
+  // True from the last own mutation finishing until the refresh that follows lands.
+  const settlingRef = useRef(false);
+  const [settling, setSettlingState] = useState(false);
+  const setSettling = useCallback((value: boolean) => { settlingRef.current = value; setSettlingState(value); }, []);
   const loggingOut = useRef(false);
   const mounted = useRef(true);
   const hiddenAt = useRef<number | null>(null);
@@ -184,6 +195,13 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tasks.error, lock, qc]);
 
+  useEffect(() => {
+    if (!settling) return;
+    const timer = setTimeout(() => setSettling(false), SETTLE_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [settling, setSettling]);
+  useEffect(() => { if (settlingRef.current && ownPending.current === 0) setSettling(false); }, [fetchedAt, tasks.error, setSettling]);
+
   const revalidate = useCallback((mustLock = false) => {
     if (mustLock) { lock(); generation.current++; }
     if (identity.current && !loggingOut.current) {
@@ -251,10 +269,14 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
 
   const mutate = async <T,>(path: string, init: RequestInit): Promise<T> => {
     const userId = identity.current;
-    if (Date.now() - lastActivity.current >= IDLE_LIMIT) revalidate(true);
-    if (!userId || !writable.current || !navigator.onLine || busy.current || loggingOut.current) throw new Error("Task changes are available after refreshing from Sway. Retry the connection first.");
+    // Our own unfinished change (or its refresh) is what holds the lock, so more changes may queue.
+    const queued = ownPending.current > 0 || settlingRef.current;
+    if (!queued && Date.now() - lastActivity.current >= IDLE_LIMIT) revalidate(true);
+    if (!userId || !navigator.onLine || loggingOut.current || (!queued && (!writable.current || busy.current))) throw new Error("Task changes are available after refreshing from Sway. Retry the connection first.");
+    ownPending.current++; setPendingCount(ownPending.current);
     const work = async () => {
-      if (identity.current !== userId || !writable.current || !navigator.onLine || loggingOut.current || busy.current) throw new Error("Task data needs a fresh connection before saving.");
+      if (identity.current !== userId || !navigator.onLine || loggingOut.current || (!queued && (!writable.current || busy.current))) throw new Error("Task data needs a fresh connection before saving.");
+      mutationStarted.current = true; setSettling(false);
       busy.current = true; lock(); generation.current++; setSnapshot(null);
       notify("mutation-start");
       await qc.cancelQueries({ queryKey: ["task-groups"] });
@@ -265,14 +287,25 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
       } finally {
         if (ticket) await finishSnapshotMutation(ticket).catch(() => { quarantineSnapshots(); storageWarning(); });
         busy.current = false;
-        if (identity.current === userId && !loggingOut.current) {
+      }
+    };
+    const run = async () => {
+      try { return await work(); } finally {
+        ownPending.current--; setPendingCount(ownPending.current);
+        // One refresh after the last queued change, not one per change.
+        if (ownPending.current === 0 && mutationStarted.current && identity.current === userId && !loggingOut.current) {
+          mutationStarted.current = false;
+          setSettling(true);
           notify("mutation-end");
           revalidate(true);
           for (const key of ["calendar", "completed", "availability-calendar"]) void qc.invalidateQueries({ queryKey: [key] });
         }
       }
     };
-    return navigator.locks ? navigator.locks.request("sway-task-mutation", work) : work();
+    if (navigator.locks) return navigator.locks.request("sway-task-mutation", run);
+    const next = tail.current.catch(() => undefined).then(run);
+    tail.current = next;
+    return next;
   };
 
   const rejectedSession = tasks.error instanceof ApiError && (tasks.error.status === 401 || tasks.error.status === 403);
@@ -283,7 +316,9 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
 
   return <Context.Provider value={{ session, groups: tasks.data ?? snapshot?.groups, saved: tasks.data === undefined && Boolean(snapshot),
     fetchedAt: tasks.data === undefined ? snapshot?.fetchedAt ?? null : fetchedAt,
-    canWrite: !locked && online && !tasks.error && !busy.current, fetching: tasks.isFetching, firstLoadSettled: tasks.isFetched, releaseTasks,
+    canWrite: !locked && online && !tasks.error && !busy.current,
+    canQueue: online && !tasks.error && ((!locked && !busy.current) || pendingCount > 0 || settling),
+    syncing: pendingCount > 0 || settling, fetching: tasks.isFetching, firstLoadSettled: tasks.isFetched, releaseTasks,
     waitingForNetwork: !online || tasks.fetchStatus === "paused",
     error: tasks.error, failureCount: tasks.failureCount, retry: () => revalidate(true), mutate,
     cacheEnabled, cacheWarning,

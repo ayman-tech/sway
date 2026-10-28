@@ -153,6 +153,42 @@ select {
   padding: 12px;
 }
 
+.task-card-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 200ms ease, opacity 160ms ease;
+}
+
+.task-card-wrap > div {
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 10px;
+}
+
+.task-card-wrap.is-leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.sync-pill {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  padding: 6px 12px;
+  position: fixed;
+  right: 16px;
+  top: 64px;
+  z-index: 30;
+}
+
 .task-card-open {
   background: transparent;
   border: 0;
@@ -653,6 +689,10 @@ select {
 
   .task-card {
     padding: 16px;
+  }
+
+  .task-card-wrap > div {
+    padding-bottom: 12px;
   }
 }
 

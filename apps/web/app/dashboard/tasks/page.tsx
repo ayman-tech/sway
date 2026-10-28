@@ -20,6 +20,9 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null);
   const taskData = useTaskData();
   const { groups: data, fetching: isFetching, waitingForNetwork, error, failureCount, retry: refetch, canWrite, saved, fetchedAt } = taskData;
+  const { canQueue, syncing } = taskData;
+  // Tasks completed by tap: collapsed right away, gone for good once the refresh lands.
+  const [leaving, setLeaving] = useState<Set<string>>(() => new Set());
   const [dateContext, setDateContext] = useState(currentDateContext);
   useEffect(() => {
     const refreshDate = () => {
@@ -49,10 +52,29 @@ export default function TasksPage() {
       taskData.mutate<Task>(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify(payload) }),
     onSuccess: refresh,
   });
+  // The provider refreshes the task list and related views once after the last queued change.
   const complete = useMutation({
     mutationFn: (task: Task) => taskData.mutate<Task>(`/tasks/${task.id}/complete`, { method: "POST" }),
-    onSuccess: refresh,
   });
+  const completeTask = (task: Task) => {
+    if (!canQueue || leaving.has(task.id)) return Promise.resolve();
+    setLeaving((previous) => new Set(previous).add(task.id));
+    return complete.mutateAsync(task).catch(() => {
+      setLeaving((previous) => {
+        const next = new Set(previous);
+        next.delete(task.id);
+        return next;
+      });
+    });
+  };
+  useEffect(() => {
+    if (syncing || !data) return;
+    const present = new Set(data.flatMap((group) => group.tasks.map((task) => task.id)));
+    setLeaving((previous) => {
+      const kept = [...previous].filter((id) => present.has(id));
+      return kept.length === previous.size ? previous : new Set(kept);
+    });
+  }, [data, syncing]);
   const remove = useMutation({
     mutationFn: (task: Task) => taskData.mutate<void>(`/tasks/${task.id}`, { method: "DELETE" }),
     onSuccess: refresh,
@@ -81,12 +103,13 @@ export default function TasksPage() {
           ))}
         </div>
       ) : null}
-      {hasData && (isFetching || !canWrite || error) ? <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
+      {hasData && !syncing && (isFetching || !canWrite || error) ? <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
         <span>{waitingForNetwork ? "Saved tasks · Waiting for connection…" : reconnecting ? "Reconnecting…" : isFetching ? "Sync in progress" : error ? "Saved tasks · Couldn’t sync" : "Saved tasks · Waiting to sync"}</span>
         {fetchedAt !== null ? <span>· Last sync: <time dateTime={new Date(fetchedAt).toISOString()}>{formatLastSync(fetchedAt, dateContext.timezone)}</time></span> : null}
         {!canWrite ? <span className="sr-only">Tasks are read-only until refresh succeeds.</span> : null}
         {error && !isFetching && !waitingForNetwork ? <button className="btn btn-secondary min-h-11 gap-2" onClick={refetch} type="button"><RefreshCw size={16} aria-hidden="true" />Retry</button> : null}
       </div> : null}
+      {syncing ? <div role="status" aria-live="polite" className="sync-pill"><RefreshCw size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />Syncing…</div> : null}
       {complete.error || remove.error ? <p role="alert" className="panel p-3 text-sm">{complete.error?.message || remove.error?.message} No change has been confirmed. Refresh to check the latest task state.</p> : null}
       {error && !hasData && !isFetching && !waitingForNetwork ? (
         <div aria-live="polite" className="rounded-xl border border-[#f2c6a8] bg-[#fff2e8] p-4 text-[#9a3412]" role="alert">
@@ -112,15 +135,17 @@ export default function TasksPage() {
         {(displayGroups ?? []).map((group) => (
           <section key={group.label}>
             <h2 className={`mb-2.5 text-lg font-bold lg:mb-3 lg:text-xl lg:font-black ${group.overdue ? "text-[#b42318]" : ""}`}>{group.label}</h2>
-            <div className="space-y-2.5 lg:space-y-3">
+            <div className="-mb-2.5 lg:-mb-3">
               {group.tasks.map((task) => (
                 <TaskCard
                   key={`${task.id}-${task.due_at ?? task.due_date ?? ""}-${task.is_preview}`}
-                  onComplete={(t) => complete.mutateAsync(t).catch(() => undefined)}
+                  onComplete={completeTask}
                   onDelete={(t) => remove.mutateAsync(t).catch(() => undefined)}
                   onOpen={setEditing}
                   task={task}
+                  completeDisabled={!canQueue}
                   disabled={!canWrite}
+                  leaving={leaving.has(task.id)}
                 />
               ))}
             </div>

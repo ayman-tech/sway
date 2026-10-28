@@ -27,6 +27,7 @@ import { TaskEditorModal, type TaskEditorPayload } from "@/components/task-edito
 import { useDialogBehavior } from "@/components/use-dialog-behavior";
 import { usePush } from "@/components/push-provider";
 import { useTaskData } from "@/components/task-data-provider";
+import { useAfterFirstTaskLoad } from "@/components/use-task-load-order";
 
 const items = [
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
@@ -48,6 +49,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const taskData = useTaskData();
+  const afterTasks = useAfterFirstTaskLoad();
   const [shellSettingsSettled, setShellSettingsSettled] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -69,8 +71,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
+    // Settings only affect the theme and the avatar initials, so they wait for the task list.
+    if (!afterTasks) return;
     const controller = new AbortController();
-        api<UserSettings>("/settings", { signal: controller.signal })
+        qc.fetchQuery({
+          queryKey: ["settings"],
+          queryFn: ({ signal }) => api<UserSettings>("/settings", { signal }),
+          staleTime: 30_000,
+        })
           .then(async (settings) => {
             let active = settings;
             const metadata = taskData.session.user.user_metadata;
@@ -83,6 +91,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                   last_name: metadata.last_name ?? null,
                 }),
               }, { expectedUserId: taskData.session.user.id });
+              qc.setQueryData(["settings"], active);
             }
             if (controller.signal.aborted) return;
             setTheme(active.theme);
@@ -91,7 +100,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           .catch(() => undefined)
           .finally(() => { if (!controller.signal.aborted) setShellSettingsSettled(true); });
     return () => controller.abort();
-  }, [taskData.session.user.id, setTheme]);
+  }, [taskData.session.user.id, setTheme, afterTasks, qc]);
 
   useEffect(() => {
     const updateName = (event: Event) => {
@@ -176,7 +185,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="dashboard-main min-w-0 px-4 pt-4 lg:px-8 lg:py-6">
-        {!taskData.canWrite && !pathname.endsWith("/tasks") ? <div role="status" className="panel mb-4 p-3 text-sm">Task changes are available after refreshing from Sway. <button className="btn btn-secondary mt-2" disabled={taskData.fetching} onClick={taskData.retry}>{taskData.fetching ? "Updating…" : "Retry"}</button></div> : null}
+        {!taskData.canWrite && !pathname.endsWith("/tasks") && !pathname.endsWith("/worklog") ? <div role="status" className="panel mb-4 p-3 text-sm">Task changes are available after refreshing from Sway. <button className="btn btn-secondary mt-2" disabled={taskData.fetching} onClick={taskData.retry}>{taskData.fetching ? "Updating…" : "Retry"}</button></div> : null}
         {signOutError ? <p role="alert" className="panel mb-4 p-4">{signOutError}</p> : null}
         <ReminderPoller />
         <GoogleSyncTrigger shellReady={shellSettingsSettled} />

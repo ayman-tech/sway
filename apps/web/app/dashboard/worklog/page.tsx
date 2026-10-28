@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
 import type { UserSettings, WorkLogEntry } from "@/lib/types";
+import { useReleaseTasksWhen } from "@/components/use-task-load-order";
 import { WorklogSlot, type SlotStatus } from "@/components/worklog-slot";
 import {
   currentShiftDay, dayAsText, dayIso, dayLayout, loggedCount, parseDay, scheduleSlots,
@@ -45,11 +46,14 @@ export default function WorklogPage() {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
 
-  const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: () => api<UserSettings>("/settings") });
+  // Shares the cache entry the dashboard shell fills, so settings load once.
+  const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: () => api<UserSettings>("/settings"), staleTime: 30_000 });
   const entriesQuery = useQuery({
     queryKey: ["worklog", days[0], today],
     queryFn: () => api<WorkLogEntry[]>(`/worklog?today=${today}`),
   });
+  // This page's data goes first; the task list loads once it has arrived (or failed).
+  useReleaseTasksWhen(settingsQuery.isFetched && entriesQuery.isFetched);
   const start = settingsQuery.data?.work_start_hour;
   const end = settingsQuery.data?.work_end_hour;
   const ready = start !== undefined && end !== undefined && entriesQuery.data !== undefined;

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { onlineManager, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
@@ -15,7 +16,7 @@ import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, IDLE
 
 type TaskData = {
   session: Session; groups: TaskGroup[] | undefined; saved: boolean; fetchedAt: number | null;
-  canWrite: boolean; fetching: boolean; waitingForNetwork: boolean; error: Error | null; failureCount: number;
+  canWrite: boolean; fetching: boolean; firstLoadSettled: boolean; releaseTasks: (path: string) => void; waitingForNetwork: boolean; error: Error | null; failureCount: number;
   retry: () => void; mutate: <T>(path: string, init: RequestInit) => Promise<T>;
   cacheEnabled: boolean; cacheWarning: string; setCacheEnabled: (enabled: boolean) => Promise<void>;
   beforeSignOut: () => Promise<void>;
@@ -23,6 +24,10 @@ type TaskData = {
 };
 const Context = createContext<TaskData | null>(null);
 const channelName = "sway-task-view";
+// Pages whose own data loads first; the task list waits for them (or the fallback) before fetching.
+// "/dashboard" is the brief stop before the start-page redirect lands on one of these pages.
+const HOLD_PATHS = new Set(["/dashboard", "/dashboard/worklog"]);
+const HOLD_FALLBACK_MS = 8_000;
 type Notice = "logout" | "changed" | "mutation-start" | "mutation-end" | "preference";
 function notify(notice: Notice) {
   if (typeof BroadcastChannel !== "undefined") {
@@ -54,6 +59,15 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
   const lastActivity = useRef(Date.now());
   const openedAt = useRef(performance.now());
   const queryKey = ["task-groups", session?.user.id, timezone];
+  const pathname = usePathname();
+  const [releasedPath, setReleasedPath] = useState<string | null>(null);
+  const holdTasks = HOLD_PATHS.has(pathname) && releasedPath !== pathname;
+  useEffect(() => {
+    if (!holdTasks) return;
+    const timer = setTimeout(() => setReleasedPath(pathname), HOLD_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [holdTasks, pathname]);
+  const releaseTasks = useCallback((path: string) => setReleasedPath(path), []);
 
   const lock = useCallback(() => { writable.current = false; setLocked(true); }, []);
   const storageWarning = useCallback(() => setCacheWarning("Saved task storage is unavailable. Online task loading still works."), []);
@@ -107,7 +121,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
 
   const tasks = useQuery<TaskGroup[], Error>({
     queryKey,
-    enabled: Boolean(session) && !authError && !loggingOut.current,
+    enabled: Boolean(session) && !authError && !loggingOut.current && !holdTasks,
     staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false,
     networkMode: "online",
     retry: shouldRetryTaskRead, retryDelay: taskRetryDelay,
@@ -269,7 +283,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
 
   return <Context.Provider value={{ session, groups: tasks.data ?? snapshot?.groups, saved: tasks.data === undefined && Boolean(snapshot),
     fetchedAt: tasks.data === undefined ? snapshot?.fetchedAt ?? null : fetchedAt,
-    canWrite: !locked && online && !tasks.error && !busy.current, fetching: tasks.isFetching,
+    canWrite: !locked && online && !tasks.error && !busy.current, fetching: tasks.isFetching, firstLoadSettled: tasks.isFetched, releaseTasks,
     waitingForNetwork: !online || tasks.fetchStatus === "paused",
     error: tasks.error, failureCount: tasks.failureCount, retry: () => revalidate(true), mutate,
     cacheEnabled, cacheWarning,

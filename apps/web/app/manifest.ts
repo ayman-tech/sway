@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Sway",
     short_name: "Sway",
     description: "Tasks, calendar, reminders, and Google Calendar import in one focused app.",
-    start_url: "/dashboard/tasks",
+    start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     orientation: "any",

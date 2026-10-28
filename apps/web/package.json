@@ -9,8 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:push": "node --test scripts/test-push-sw.mjs",
-    "test:snapshots": "node --experimental-strip-types --test scripts/test-task-snapshots.mjs",
-    "test:worklog": "node --experimental-strip-types --test scripts/test-worklog.mjs"
+    "test:snapshots": "node --experimental-strip-types --test scripts/test-task-snapshots.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.88.0",

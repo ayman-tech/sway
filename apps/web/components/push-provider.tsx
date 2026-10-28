@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+import { useAfterFirstTaskLoad } from "@/components/use-task-load-order";
 import { announcePushChange, deviceLock, foregroundAllowed, pushRegistration, readPushBinding, setForegroundAllowed, writePushBinding } from "@/lib/push-device";
 
 type PushConfig = { enabled: boolean; public_key: string | null };
@@ -29,6 +30,8 @@ export function PushProvider({ children }: { children: React.ReactNode }) {
   const [message, setMessage] = useState("");
   const userId = useRef<string | null>(null);
   const signingOut = useRef(false);
+  const afterTasks = useAfterFirstTaskLoad();
+  const gate = useRef({ open: false, pending: false });
 
   const reconcile = useCallback(async () => {
     if (signingOut.current) return;
@@ -88,9 +91,12 @@ export function PushProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setSupported(window.isSecureContext && "Notification" in window && "PushManager" in window && "serviceWorker" in navigator);
-    const update = () => { void refresh(); };
-    // Let foreground dashboard data start first. No permission prompt on mount.
-    const timer = window.setTimeout(update, 1500);
+    // Checks requested before the first task load finishes run once it has, so they
+    // never compete with the request the user is waiting on. No permission prompt on mount.
+    const update = () => {
+      if (!gate.current.open) { gate.current.pending = true; return; }
+      void refresh();
+    };
     const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("sway-push") : null;
     if (channel) channel.onmessage = update;
     window.addEventListener("sway-push-changed", update);
@@ -100,12 +106,18 @@ export function PushProvider({ children }: { children: React.ReactNode }) {
       if (session?.user.id !== userId.current) window.setTimeout(update, 0);
     });
     return () => {
-      window.clearTimeout(timer); channel?.close(); data.subscription.unsubscribe();
+      channel?.close(); data.subscription.unsubscribe();
       window.removeEventListener("sway-push-changed", update);
       window.removeEventListener("online", update);
       window.removeEventListener("focus", update);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!afterTasks) return;
+    gate.current = { open: true, pending: false };
+    void refresh();
+  }, [afterTasks, refresh]);
 
   const action = async (work: () => Promise<void>) => {
     setBusy(true); setError(""); setMessage("");

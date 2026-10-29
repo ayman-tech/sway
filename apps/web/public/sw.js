@@ -35,6 +35,26 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// After the app sits in the background, its network connection can be dead without failing,
+// so a page load would wait forever. Give up quickly, then retry on a fresh connection.
+const PAGE_ATTEMPT_MS = [5_000, 20_000];
+
+async function fetchPage(request) {
+  let failure;
+  for (const limit of PAGE_ATTEMPT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), limit);
+    try {
+      return await fetch(request, { cache: "no-store", signal: controller.signal });
+    } catch (error) {
+      failure = error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw failure;
+}
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
@@ -43,7 +63,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request, { cache: "no-store" }).catch(() => caches.match(OFFLINE_URL)));
+    event.respondWith(fetchPage(request).catch(() => caches.match(OFFLINE_URL)));
     return;
   }
 

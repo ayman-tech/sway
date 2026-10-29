@@ -5,14 +5,14 @@ import vm from "node:vm";
 
 const source = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8");
 
-function worker(binding = null) {
+function worker(binding = null, fetchImpl) {
   const handlers = {};
   const notifications = [];
   const opened = [];
   const requests = [];
   const state = { binding, windows: [] };
   const context = {
-    URL, Date, Promise,
+    URL, Date, Promise, AbortController, setTimeout, clearTimeout,
     indexedDB: {
       open() {
         const request = {};
@@ -31,7 +31,9 @@ function worker(binding = null) {
       },
     },
     caches: { match: async (url) => url === "/offline.html" ? "offline-page" : undefined },
-    fetch: async (request, options) => { requests.push([request, options]); throw new Error("offline"); },
+    fetch: fetchImpl
+      ? (request, options) => { requests.push([request, options]); return fetchImpl(requests.length, options); }
+      : async (request, options) => { requests.push([request, options]); throw new Error("offline"); },
     self: {
       location: { origin: "https://sway.test" },
       addEventListener(name, handler) { handlers[name] = handler; },
@@ -119,4 +121,14 @@ test("API calls and mutations remain unintercepted; navigation retains fallback"
   w.handlers.fetch({ request: { method: "GET", mode: "navigate", url: "https://sway.test/dashboard/tasks" }, respondWith(promise) { response = promise; } });
   assert.equal(await response, "offline-page");
   assert.equal(w.requests[0][1].cache, "no-store");
+});
+
+test("navigation retries on a fresh attempt when the first one hangs", async () => {
+  const hang = (options) => new Promise((_, reject) => options.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+  const w = worker(null, (attempt, options) => attempt === 1 ? hang(options) : Promise.resolve("page"));
+  // Takes the first attempt's real 5s limit to abort.
+  let response;
+  w.handlers.fetch({ request: { method: "GET", mode: "navigate", url: "https://sway.test/dashboard" }, respondWith(promise) { response = promise; } });
+  assert.equal(await response, "page");
+  assert.equal(w.requests.length, 2);
 });

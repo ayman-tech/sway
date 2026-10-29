@@ -164,11 +164,17 @@ select {
   min-height: 0;
   overflow: hidden;
   padding-bottom: 10px;
+  transition: padding-bottom 200ms ease;
 }
 
 .task-card-wrap.is-leaving {
   grid-template-rows: 0fr;
   opacity: 0;
+}
+
+/* The gap between cards lives in this padding, so it has to collapse with the card. */
+.task-card-wrap.is-leaving > div {
+  padding-bottom: 0;
 }
 
 .sync-pill {

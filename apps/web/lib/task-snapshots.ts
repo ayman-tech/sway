@@ -20,6 +20,22 @@ const schema = z.object({
   groups: z.array(z.object({ label: z.string(), overdue: z.boolean(), tasks: z.array(taskSchema), has_more: z.boolean().optional() }).strict()),
 }).strict();
 export type TaskSnapshot = z.infer<typeof schema>;
+const worklogSchema = z.object({
+  version: z.literal(1), userId: z.string(), timezone: z.string(), fetchedAt: z.number(),
+  today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  start: z.number().int().min(0).max(23), end: z.number().int().min(1).max(24),
+  entries: z.array(z.object({ entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), hour_slot: z.number().int().min(0).max(23), note: z.string().max(2000) }).strict()),
+}).strict();
+export type WorklogSnapshot = z.infer<typeof worklogSchema>;
+export function validWorklogSnapshot(value: unknown, userId: string, timezone: string): WorklogSnapshot | null {
+  try {
+    if (new TextEncoder().encode(JSON.stringify(value)).length > SNAPSHOT_LIMIT) return null;
+    const result = worklogSchema.safeParse(value);
+    if (!result.success) return null;
+    const item = result.data;
+    return item.userId === userId && item.timezone === timezone && item.fetchedAt <= Date.now() && Date.now() - item.fetchedAt < SNAPSHOT_TTL ? item : null;
+  } catch { return null; }
+}
 type Meta = { owner: string | null; revision: number; enabled: boolean; pendingUntil: number };
 export type SnapshotTicket = { userId: string; revision: number };
 const initialMeta: Meta = { owner: null, revision: 0, enabled: true, pendingUntil: 0 };
@@ -91,7 +107,7 @@ export function claimSnapshotOwner(userId: string | null) {
     cursor.onsuccess = () => {
       const entry = cursor.result;
       if (!entry) return;
-      if (!userId || !validSnapshot(entry.value, userId, entry.value?.timezone)) entry.delete();
+      if (!userId || !(entry.key === "worklog" ? validWorklogSnapshot(entry.value, userId, entry.value?.timezone) : validSnapshot(entry.value, userId, entry.value?.timezone))) entry.delete();
       entry.continue();
     };
     done(meta.enabled && !quarantined());
@@ -129,8 +145,11 @@ export function saveTaskSnapshot(ticket: SnapshotTicket, timezone: string, group
     if (meta.owner !== ticket.userId || meta.revision !== ticket.revision || !meta.enabled || meta.pendingUntil > Date.now() || quarantined()) { done(false); return; }
     const key = JSON.stringify([ticket.userId, timezone]);
     // Retain only the latest timezone's view, bounding total stored task data.
-    snapshots.clear();
-    if (value) snapshots.put(value, key);
+    const keys = snapshots.getAllKeys();
+    keys.onsuccess = () => {
+      for (const previous of keys.result) if (previous !== "worklog") snapshots.delete(previous);
+      if (value) snapshots.put(value, key);
+    };
     done(Boolean(value));
   });
 }
@@ -160,4 +179,25 @@ export function setSnapshotPreference(enabled: boolean) {
     save({ ...meta, enabled, revision: meta.revision + 1 });
     done();
   }).then(() => { try { localStorage.removeItem(quarantineKey); } catch { /* Optional. */ } });
+}
+
+export function loadWorklogSnapshot(userId: string, timezone: string) {
+  return transaction<WorklogSnapshot | null>((meta, _save, snapshots, done) => {
+    if (meta.owner !== userId || !meta.enabled || meta.pendingUntil > Date.now() || quarantined()) { done(null); return; }
+    const request = snapshots.get("worklog");
+    request.onsuccess = () => {
+      const value = validWorklogSnapshot(request.result, userId, timezone);
+      if (!value) snapshots.delete("worklog");
+      done(value);
+    };
+  });
+}
+
+export function saveWorklogSnapshot(ticket: SnapshotTicket, value: WorklogSnapshot) {
+  const valid = validWorklogSnapshot(value, ticket.userId, value.timezone);
+  return transaction<boolean>((meta, _save, snapshots, done) => {
+    if (meta.owner !== ticket.userId || meta.revision !== ticket.revision || !meta.enabled || meta.pendingUntil > Date.now() || quarantined()) { done(false); return; }
+    if (valid) snapshots.put(valid, "worklog"); else snapshots.delete("worklog");
+    done(Boolean(valid));
+  });
 }

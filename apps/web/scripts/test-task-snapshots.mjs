@@ -5,6 +5,41 @@ import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, load
   quarantineSnapshots, readSnapshotTicket, saveTaskSnapshot, setSnapshotPreference,
   validSnapshot, SNAPSHOT_TTL, SNAPSHOT_LIMIT } from "../lib/task-snapshots.ts";
 import { withDeadline } from "../lib/request-deadline.ts";
+import { loadWorklogSnapshot, saveWorklogSnapshot, validWorklogSnapshot } from "../lib/task-snapshots.ts";
+
+const worklogValue = () => ({ version: 1, userId: "a", timezone: "UTC", today: "2026-11-16", fetchedAt: Date.now(), start: 9, end: 24, entries: [{ entry_date: "2026-11-16", hour_slot: 9, note: "Worked" }] });
+test("worklog and task snapshots coexist across task refresh and owner revalidation", async () => {
+  const ticket = await seed();
+  assert.equal(await saveWorklogSnapshot(ticket, worklogValue()), true);
+  await saveTaskSnapshot(ticket, "UTC", [], Date.now());
+  await claimSnapshotOwner("a");
+  assert.equal((await loadWorklogSnapshot("a", "UTC")).entries[0].note, "Worked");
+  assert.deepEqual((await loadTaskSnapshot("a", "UTC")).groups, []);
+  assert.equal(await loadWorklogSnapshot("b", "UTC"), null);
+  assert.equal(await loadWorklogSnapshot("a", "America/New_York"), null);
+});
+test("worklog mutation fence, logout and opt-out reject stale persisted notes", async () => {
+  const ticket = await seed();
+  await saveWorklogSnapshot(ticket, worklogValue());
+  const mutation = await beginSnapshotMutation("a");
+  assert.equal(await loadWorklogSnapshot("a", "UTC"), null);
+  assert.equal(await saveWorklogSnapshot(ticket, worklogValue()), false);
+  await finishSnapshotMutation(mutation);
+  const fresh = await readSnapshotTicket("a");
+  await saveWorklogSnapshot(fresh, worklogValue());
+  await setSnapshotPreference(false);
+  assert.equal(await loadWorklogSnapshot("a", "UTC"), null);
+  assert.equal(await saveWorklogSnapshot(fresh, worklogValue()), false);
+  await setSnapshotPreference(true);
+  await claimSnapshotOwner(null);
+  assert.equal(await saveWorklogSnapshot(fresh, worklogValue()), false);
+});
+test("worklog validation excludes invalid schedules, old snapshots and unknown fields", () => {
+  assert.ok(validWorklogSnapshot(worklogValue(), "a", "UTC"));
+  for (const override of [{ start: -1 }, { end: 25 }, { fetchedAt: Date.now() - SNAPSHOT_TTL }, { token: "secret" }, { entries: [{ entry_date: "2026-11-16", hour_slot: 24, note: "x" }] }]) {
+    assert.equal(validWorklogSnapshot({ ...worklogValue(), ...override }, "a", "UTC"), null);
+  }
+});
 import { QueryClient, QueryObserver, onlineManager } from "@tanstack/react-query";
 import { resumeTaskRead, shouldRetryTaskRead, taskRetryDelay } from "../lib/task-recovery.ts";
 

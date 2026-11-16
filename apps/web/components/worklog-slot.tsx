@@ -15,17 +15,18 @@ type Props = {
   serverNote: string;
   status: SlotStatus;
   current: boolean;
+  readOnly?: boolean;
   onSave: (day: string, hour: number, note: string) => void;
 };
 
-export function WorklogSlot({ day, hour, serverNote, status, current, onSave }: Props) {
+export function WorklogSlot({ day, hour, serverNote, status, current, onSave, readOnly = false }: Props) {
   const [draft, setDraft] = useState(serverNote);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const focused = useRef(false);
   // Latest values for the flush callbacks below, which run from timers and cleanups.
-  const latest = useRef({ draft, serverNote, onSave });
-  latest.current = { draft, serverNote, onSave };
+  const latest = useRef({ draft, serverNote, onSave, readOnly });
+  latest.current = { draft, serverNote, onSave, readOnly };
   const lastSent = useRef(serverNote);
   const holdDraft = status === "saving" || status === "error";
 
@@ -46,6 +47,7 @@ export function WorklogSlot({ day, hour, serverNote, status, current, onSave }: 
 
   const flush = useCallback((force = false) => {
     clearTimeout(timer.current);
+    if (latest.current.readOnly) return;
     const text = latest.current.draft.trim();
     if (!force && text === lastSent.current.trim()) return;
     lastSent.current = text;
@@ -79,7 +81,7 @@ export function WorklogSlot({ day, hour, serverNote, status, current, onSave }: 
           {status === "error" ? (
             <>
               <AlertCircle size={14} /> Not saved
-              <button className="worklog-retry" onClick={() => flush(true)} type="button">Retry</button>
+              <button disabled={readOnly} className="worklog-retry" onClick={() => flush(true)} type="button">Retry</button>
             </>
           ) : null}
         </span>
@@ -98,6 +100,7 @@ export function WorklogSlot({ day, hour, serverNote, status, current, onSave }: 
         placeholder="What did you work on?"
         ref={textarea}
         rows={1}
+        readOnly={readOnly}
         value={draft}
       />
     </div>

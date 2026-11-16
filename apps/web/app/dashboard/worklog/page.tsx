@@ -8,6 +8,9 @@ import { api, ApiError } from "@/lib/api";
 import type { UserSettings, WorkLogEntry } from "@/lib/types";
 import { useReleaseTasksWhen } from "@/components/use-task-load-order";
 import { WorklogSlot, type SlotStatus } from "@/components/worklog-slot";
+import { useTaskData } from "@/components/task-data-provider";
+import { beginSnapshotMutation, finishSnapshotMutation, loadWorklogSnapshot, quarantineSnapshots, readSnapshotTicket, saveWorklogSnapshot, type WorklogSnapshot } from "@/lib/task-snapshots";
+import { shouldRetryTaskRead, taskRetryDelay } from "@/lib/task-recovery";
 import {
   currentShiftDay, dayAsText, dayIso, dayLayout, loggedCount, parseDay, scheduleSlots,
   windowDays,
@@ -39,6 +42,22 @@ function withEntry(entries: WorkLogEntry[] | undefined, entry: WorkLogEntry) {
 
 export default function WorklogPage() {
   const qc = useQueryClient();
+  const { session, cacheEnabled } = useTaskData();
+  const userId = session.user.id;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const [snapshot, setSnapshot] = useState<WorklogSnapshot | null>(null);
+  const [online, setOnline] = useState(true);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update(); window.addEventListener("online", update); window.addEventListener("offline", update);
+    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    setSnapshot(null);
+    if (cacheEnabled) void loadWorklogSnapshot(userId, timezone).then((value) => { if (active) setSnapshot(value); }).catch(() => {});
+    return () => { active = false; };
+  }, [userId, timezone, cacheEnabled]);
   const now = useNow();
   const today = dayIso(now);
   const days = useMemo(() => windowDays(today), [today]);
@@ -47,16 +66,29 @@ export default function WorklogPage() {
   const [copyError, setCopyError] = useState("");
 
   // Shares the cache entry the dashboard shell fills, so settings load once.
-  const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: () => api<UserSettings>("/settings"), staleTime: 30_000 });
-  const entriesQuery = useQuery({
-    queryKey: ["worklog", days[0], today],
-    queryFn: () => api<WorkLogEntry[]>(`/worklog?today=${today}`),
+  const workQuery = useQuery({
+    queryKey: ["worklog", userId, timezone, days[0], today],
+    retry: shouldRetryTaskRead, retryDelay: taskRetryDelay,
+    queryFn: async ({ signal }) => {
+      const ticket = await readSnapshotTicket(userId).catch(() => null);
+      const [settings, entries] = await Promise.all([
+        qc.fetchQuery({ queryKey: ["settings"], queryFn: () => api<UserSettings>("/settings", {}, { expectedUserId: userId }), staleTime: 30_000 }),
+        api<WorkLogEntry[]>(`/worklog?today=${today}`, { signal }, { expectedUserId: userId }),
+      ]);
+      signal.throwIfAborted();
+      const value: WorklogSnapshot = { version: 1, userId, timezone, today, fetchedAt: Date.now(), start: settings.work_start_hour, end: settings.work_end_hour, entries };
+      if (ticket) await saveWorklogSnapshot(ticket, value).catch(() => {});
+      return value;
+    },
   });
   // This page's data goes first; the task list loads once it has arrived (or failed).
-  useReleaseTasksWhen(settingsQuery.isFetched && entriesQuery.isFetched);
-  const start = settingsQuery.data?.work_start_hour;
-  const end = settingsQuery.data?.work_end_hour;
-  const ready = start !== undefined && end !== undefined && entriesQuery.data !== undefined;
+  useReleaseTasksWhen(workQuery.isFetched);
+  const rejected = workQuery.error instanceof ApiError && (workQuery.error.status === 401 || workQuery.error.status === 403);
+  const view = rejected ? null : workQuery.data ?? (cacheEnabled && snapshot?.userId === userId && snapshot.timezone === timezone ? snapshot : null);
+  const start = view?.start;
+  const end = view?.end;
+  const ready = Boolean(view);
+  const canEdit = Boolean(workQuery.data && !workQuery.error && online);
 
   const shiftDay = start !== undefined && end !== undefined ? currentShiftDay(now, start, end) : today;
   const day = picked && days.includes(picked) ? picked : shiftDay;
@@ -65,11 +97,16 @@ export default function WorklogPage() {
   const save = useMutation({
     mutationKey: SAVE_KEY,
     scope: { id: "worklog-save" },
-    mutationFn: ({ day, hour, note, today }: SaveVars) =>
-      api<WorkLogEntry>(`/worklog/${day}/${hour}`, { method: "PUT", body: JSON.stringify({ note, today }) }),
+    mutationFn: async ({ day, hour, note, today }: SaveVars) => {
+      if (!canEdit || !navigator.onLine) throw new Error("Refresh the work log before saving.");
+      const ticket = await beginSnapshotMutation(userId).catch(() => { quarantineSnapshots(); return null; });
+      try { return await api<WorkLogEntry>(`/worklog/${day}/${hour}`, { method: "PUT", body: JSON.stringify({ note, today }) }, { expectedUserId: userId }); }
+      finally { if (ticket) await finishSnapshotMutation(ticket).catch(quarantineSnapshots); }
+    },
     // A fetch already in flight could return the note from before this save.
-    onMutate: () => qc.cancelQueries({ queryKey: ["worklog"] }),
-    onSuccess: (entry) => qc.setQueriesData<WorkLogEntry[]>({ queryKey: ["worklog"] }, (old) => withEntry(old, entry)),
+    onMutate: () => { setSnapshot(null); return qc.cancelQueries({ queryKey: ["worklog"] }); },
+    onSuccess: (entry) => qc.setQueryData<WorklogSnapshot>(["worklog", userId, timezone, days[0], today], (old) => old ? { ...old, entries: withEntry(old.entries, entry) } : old),
+    onSettled: () => { void qc.invalidateQueries({ queryKey: ["worklog"] }); },
   });
   const saveEntry = (entryDay: string, hour: number, note: string) =>
     save.mutate({ day: entryDay, hour, note, today });
@@ -89,11 +126,12 @@ export default function WorklogPage() {
 
   const notes = useMemo(() => {
     const map = new Map<number, string>();
-    for (const entry of entriesQuery.data ?? []) {
+    for (const entry of view?.entries ?? []) {
+      if (entry.entry_date < days[0] || entry.entry_date > today) continue;
       if (entry.entry_date === day) map.set(entry.hour_slot, entry.note);
     }
     return map;
-  }, [entriesQuery.data, day]);
+  }, [view?.entries, day, days, today]);
   const slots = useMemo(() => (start !== undefined && end !== undefined ? scheduleSlots(start, end) : []), [start, end]);
   const layout = dayLayout(slots, notes);
   const logged = loggedCount(slots, notes);
@@ -125,13 +163,10 @@ export default function WorklogPage() {
     }
   };
 
-  const error = settingsQuery.error ?? entriesQuery.error;
-  const waitingForNetwork = !ready && (settingsQuery.fetchStatus === "paused" || entriesQuery.fetchStatus === "paused");
-  const retrying = settingsQuery.isFetching || entriesQuery.isFetching;
-  const retry = () => {
-    if (settingsQuery.error) void settingsQuery.refetch();
-    if (entriesQuery.error) void entriesQuery.refetch();
-  };
+  const error = workQuery.error;
+  const waitingForNetwork = !online || workQuery.fetchStatus === "paused";
+  const retrying = workQuery.isFetching;
+  const retry = () => { void workQuery.refetch(); };
 
   const renderSlot = (hour: number) => (
     <WorklogSlot
@@ -142,6 +177,7 @@ export default function WorklogPage() {
       onSave={saveEntry}
       serverNote={notes.get(hour) ?? ""}
       status={statusFor(day, hour)}
+      readOnly={!canEdit}
     />
   );
 
@@ -193,6 +229,12 @@ export default function WorklogPage() {
           );
         })}
       </div>
+
+      {ready && (!canEdit || retrying) ? <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+        <span>{waitingForNetwork ? "Saved work log · Waiting for connection…" : retrying ? "Syncing work log…" : "Saved work log · Couldn’t sync"} · Last sync: {new Date(view!.fetchedAt).toLocaleString()}</span>
+        {!retrying && !waitingForNetwork ? <button className="btn btn-secondary" onClick={retry}>Retry</button> : null}
+        {!canEdit ? <span>Read-only until refreshed.</span> : null}
+      </div> : null}
 
       {!ready && !error ? (
         <div aria-busy="true" aria-live="polite" className="space-y-3" role="status">

@@ -91,6 +91,8 @@ alter table public.user_settings add column if not exists work_end_hour smallint
     check (work_end_hour between 1 and 24);
 
 alter table public.user_settings enable row level security;
+alter table public.user_settings add column if not exists work_weekly_goal_hours smallint
+    check (work_weekly_goal_hours between 1 and 168);
 
 drop policy if exists "user_settings_select_own" on public.user_settings;
 drop policy if exists "user_settings_insert_own" on public.user_settings;

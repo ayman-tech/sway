@@ -1,5 +1,77 @@
 @import "tailwindcss";
 
+.worklog-layout { display:grid; gap:20px; align-items:start; }
+.worklog-summary { display:grid; gap:12px; min-width:0; }
+.worklog-progress-card { padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
+.worklog-progress-card h2 { font-size:14px; font-weight:650; line-height:1.4; }
+.worklog-ring-row { display:flex; align-items:center; gap:16px; }
+.worklog-ring-row p { margin-top:6px; color:var(--muted); font-size:13px; line-height:1.45; }
+.worklog-ring { position:relative; flex:0 0 96px; width:96px; height:96px; }
+.worklog-ring svg { width:100%; height:100%; transform:rotate(-90deg); fill:none; stroke-width:9; }
+.ring-track { stroke:var(--line); }
+.ring-value { stroke:var(--accent); stroke-linecap:round; transition:stroke-dashoffset .5s ease; }
+.worklog-ring strong { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:650; font-variant-numeric:tabular-nums; }
+.worklog-ring strong span { font-size:19px; }
+.worklog-metrics { display:grid; grid-template-columns:1fr 1fr; margin-top:18px; padding-top:12px; border-top:1px solid var(--line); }
+.worklog-metrics > div { display:flex; flex-direction:column; gap:4px; }
+.worklog-metrics > div + div { padding-left:20px; border-left:1px solid var(--line); }
+.worklog-metrics strong { font-size:26px; line-height:1.1; font-weight:650; }
+.worklog-metrics span { color:var(--muted); font-size:12px; line-height:1.4; }
+.worklog-count-note { display:flex; gap:6px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1.5; }
+.worklog-count-note svg { flex-shrink:0; margin-top:1px; }
+.worklog-card-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.worklog-card-heading > span { font-size:11px; color:var(--muted); }
+.worklog-chart { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:5px; margin-top:16px; }
+.worklog-chart-day { min-width:0; display:flex; flex-direction:column; align-items:stretch; gap:6px; border-radius:6px; padding:2px; }
+.worklog-chart-day:hover { background:var(--nav-hover); }
+.worklog-chart-column { height:98px; display:flex; flex-direction:column; justify-content:flex-end; gap:4px; }
+.worklog-chart-count { font-size:12px; font-weight:600; }
+.worklog-chart-bar { display:block; background:var(--accent); opacity:.7; border-radius:4px 4px 2px 2px; transition:height .35s ease; }
+.worklog-chart-day[aria-pressed="true"] .worklog-chart-bar { opacity:1; }
+.worklog-chart-label { font-size:11px; padding:4px 0; border-radius:5px; line-height:1.3; }
+.worklog-chart-label small { display:block; font-size:10px; opacity:.75; }
+.worklog-chart-day[aria-pressed="true"] .worklog-chart-label { background:var(--nav-active); color:var(--nav-active-text); }
+.worklog-goal .worklog-card-heading { margin:-8px -8px 2px 0; }
+.worklog-goal-label { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; margin-bottom:9px; }
+.worklog-goal-track { background:var(--line); height:9px; border-radius:8px; overflow:hidden; }
+.worklog-goal-track > div { background:var(--accent); height:100%; border-radius:inherit; transition:width .45s ease; }
+.worklog-goal-empty { color:var(--muted); font-size:13px; }
+.worklog-goal-success:empty { display:none; }
+.worklog-goal-success { color:var(--accent); font-size:12px; margin-top:10px; }
+.goal-celebrate { animation:goal-pulse 1s ease 2; }
+@keyframes goal-pulse { 50% { border-color:var(--accent); box-shadow:0 0 0 3px var(--soft-accent); } }
+.worklog-editor { min-width:0; }
+.worklog-page .btn-secondary { background:var(--panel); color:var(--foreground); border-color:var(--line); font-size:13px; font-weight:600; }
+.worklog-page h1 { font-weight:650; }
+.worklog-page .worklog-slot { display:block; border-radius:14px; padding:14px 16px; }
+.worklog-page .worklog-slot-head { flex-direction:row; align-items:center; margin:0 0 5px; }
+.worklog-page .worklog-slot label { font-size:14px; font-weight:650; }
+.worklog-page .worklog-note { border:0; background:transparent; padding:4px 0; border-radius:0; font-size:14px; min-height:30px; }
+.worklog-page .worklog-note:focus { outline-offset:4px; }
+.worklog-page button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@media (max-width:767px) {
+  .worklog-summary { gap:10px; }
+  .worklog-progress-card { padding:12px; }
+  .worklog-ring { flex-basis:78px; width:78px; height:78px; }
+  .worklog-ring-row { gap:12px; }
+  .worklog-metrics { margin-top:12px; padding-top:10px; }
+  .worklog-metrics strong { font-size:23px; }
+  .worklog-count-note { margin-top:10px; padding-top:8px; font-size:10px; }
+  .worklog-chart { margin-top:10px; }
+  .worklog-chart-column { height:80px; }
+  .worklog-chart-bar { max-height:58px; }
+  .worklog-chart-label small { display:none; }
+  .worklog-editor .btn { padding:8px 10px; }
+}
+@media (min-width:1200px) {
+  .worklog-layout { grid-template-columns:300px minmax(0,1fr); gap:24px; }
+  .worklog-editor { border:1px solid var(--line); background:color-mix(in srgb,var(--panel) 40%,transparent); padding:18px; border-radius:16px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .ring-value,.worklog-chart-bar,.worklog-goal-track > div { transition:none; }
+  .goal-celebrate { animation:none; }
+}
+
 :root {
   color-scheme: light;
   --background: #f4f5f7;

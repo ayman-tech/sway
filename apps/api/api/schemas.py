@@ -68,6 +68,7 @@ class SettingsOut(BaseModel):
     browser_notifications_enabled: bool = False
     work_start_hour: int = 9
     work_end_hour: int = 18
+    work_weekly_goal_hours: int | None = None
 
 
 class SettingsUpdate(BaseModel):
@@ -78,6 +79,7 @@ class SettingsUpdate(BaseModel):
     browser_notifications_enabled: bool | None = None
     work_start_hour: int | None = Field(default=None, ge=0, le=23)
     work_end_hour: int | None = Field(default=None, ge=1, le=24)
+    work_weekly_goal_hours: int | None = Field(default=None, ge=1, le=168, strict=True)
 
 
 class WorkLogEntryOut(BaseModel):

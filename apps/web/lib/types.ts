@@ -37,6 +37,7 @@ export type UserSettings = {
   browser_notifications_enabled: boolean;
   work_start_hour: number;
   work_end_hour: number;
+  work_weekly_goal_hours: number | null;
 };
 
 export type WorkLogEntry = {

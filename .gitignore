@@ -25,6 +25,9 @@ npm-debug.log*
 dev-plans/
 tests
 */tests
+!apps/api/tests/
+apps/api/tests/*
+!apps/api/tests/test_worklog.py
 .DS_Store
 CLAUDE.md
 AGENTS.md

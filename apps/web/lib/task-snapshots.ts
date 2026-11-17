@@ -24,6 +24,7 @@ const worklogSchema = z.object({
   version: z.literal(1), userId: z.string(), timezone: z.string(), fetchedAt: z.number(),
   today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   start: z.number().int().min(0).max(23), end: z.number().int().min(1).max(24),
+  goal: z.number().int().min(1).max(168).nullable().default(null),
   entries: z.array(z.object({ entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), hour_slot: z.number().int().min(0).max(23), note: z.string().max(2000) }).strict()),
 }).strict();
 export type WorklogSnapshot = z.infer<typeof worklogSchema>;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, CalendarDays, CheckCircle2, Bell, RefreshCw, Bot, Check, Link2, Smartphone, ListTodo } from "lucide-react";
 import styles from "./landing.module.css";
 import { LandingThemeToggle } from "@/components/landing-theme-toggle";
+import { SwayLogo } from "@/components/sway-logo";
 
 const features = [
   { icon: ListTodo, title: "Know what needs you today", text: "Overdue, Today, Next 7 Days, and Later keep your next step in view. Give ideas without a deadline a home, too." },
@@ -15,8 +16,8 @@ export default function LandingPage() {
       <section className={`${styles.hero} min-h-[92vh] px-6 py-6`}>
         <div className={styles.backdrop} aria-hidden="true"><CalendarDays /><CheckCircle2 /><CalendarDays /></div>
         <nav className="mx-auto flex max-w-6xl items-center justify-between">
-          <Link className="text-2xl font-black tracking-normal" href="/">
-            Sway
+          <Link className="flex items-center gap-2 text-2xl font-black tracking-normal" href="/">
+            <SwayLogo size={32} /> Sway
           </Link>
           <div className="flex items-center gap-3">
             <LandingThemeToggle />

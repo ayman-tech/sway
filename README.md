@@ -1,5 +1,11 @@
 # Sway
 
+### Work Log progress rollout
+
+For existing deployments, run `supabase/worklog_weekly_goal.sql` in the Supabase SQL editor **before** deploying the API/web update. This adds an optional account-wide goal (1–168 hours, disabled by default). New installations receive it from `supabase/schema.sql`. No environment variables or extra services are needed.
+
+Work Log progress counts unique hourly slots containing saved notes over the last seven local dates; it is not a duration tracker. The daily ring uses the current work schedule; weekly totals include notes outside that schedule. Old browser snapshots load without a goal and refresh normally. Rebuild web/PWA branding with `node apps/web/scripts/build-brand-icons.mjs`; Android notification badges retain a transparent monochrome silhouette. Installed launchers may refresh their icons on the browser/OS update schedule.
+
 Sway is a productivity app with a desktop app and a web app. The desktop app is
 **offline-first**; the web app is **online-first** with a marketing landing page, Supabase auth,
 FastAPI, and a Next.js dashboard. Both share task domain logic through a Python core package.

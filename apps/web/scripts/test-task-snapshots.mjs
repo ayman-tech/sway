@@ -5,6 +5,30 @@ import { beginSnapshotMutation, claimSnapshotOwner, finishSnapshotMutation, load
   quarantineSnapshots, readSnapshotTicket, saveTaskSnapshot, setSnapshotPreference,
   validSnapshot, SNAPSHOT_TTL, SNAPSHOT_LIMIT } from "../lib/task-snapshots.ts";
 import { withDeadline } from "../lib/request-deadline.ts";
+import { worklogProgress, windowDays } from "../lib/worklog.ts";
+
+test("weekly progress counts unique nonblank slots, including outside schedule, within the rolling window", () => {
+  const days = windowDays("2026-11-16");
+  const entries = [
+    { entry_date: "2026-11-16", hour_slot: 9, note: "Work" },
+    { entry_date: "2026-11-16", hour_slot: 9, note: "Updated" },
+    { entry_date: "2026-11-16", hour_slot: 23, note: "Late" },
+    { entry_date: "2026-11-15", hour_slot: 10, note: " " },
+    { entry_date: "2026-11-10", hour_slot: 0, note: "Night shift" },
+    { entry_date: "2026-11-09", hour_slot: 9, note: "Expired" },
+  ];
+  const result = worklogProgress(days, entries);
+  assert.equal(result.total, 3);
+  assert.equal(result.activeDays, 2);
+  assert.equal(result.counts[6].count, 2);
+  assert.equal(worklogProgress(days, []).total, 0);
+});
+
+test("old worklog snapshots load with no goal; new goals are bounded", () => {
+  assert.equal(validWorklogSnapshot(worklogValue(), "a", "UTC").goal, null);
+  assert.equal(validWorklogSnapshot({ ...worklogValue(), goal: 25 }, "a", "UTC").goal, 25);
+  assert.equal(validWorklogSnapshot({ ...worklogValue(), goal: 169 }, "a", "UTC"), null);
+});
 import { loadWorklogSnapshot, saveWorklogSnapshot, validWorklogSnapshot } from "../lib/task-snapshots.ts";
 
 const worklogValue = () => ({ version: 1, userId: "a", timezone: "UTC", today: "2026-11-16", fetchedAt: Date.now(), start: 9, end: 24, entries: [{ entry_date: "2026-11-16", hour_slot: 9, note: "Worked" }] });

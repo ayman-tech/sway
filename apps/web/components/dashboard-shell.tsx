@@ -8,7 +8,6 @@ import {
   CalendarCheck,
   CalendarDays,
   CheckCircle2,
-  Home,
   ListTodo,
   LogOut,
   MoreHorizontal,
@@ -18,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { SwayLogo } from "@/components/sway-logo";
 import { ReminderPoller } from "@/components/reminder-poller";
 import { GoogleSyncTrigger } from "@/components/google-sync-trigger";
 import { api } from "@/lib/api";
@@ -141,7 +141,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="dashboard-shell min-h-screen lg:grid lg:grid-cols-[225px_1fr]">
       <aside className="dashboard-sidebar hidden border-r border-[#dfd7ca] bg-[#fffdf8] px-4 py-5 lg:flex lg:min-h-screen lg:flex-col">
         <Link className="mb-8 flex items-center gap-2 text-2xl font-black" href="/">
-          <Home size={22} /> Sway
+          <SwayLogo size={32} /> Sway
         </Link>
         <button className="btn btn-primary mb-5 w-full" disabled={!taskData.canWrite} title={!taskData.canWrite ? "Refresh tasks to enable changes" : undefined} onClick={() => { if (taskData.canWrite) setCreateOpen(true); }} type="button">
           <Plus size={18} /> Add task

@@ -66,6 +66,18 @@ export function loggedCount(slots: number[], notes: Map<number, string>) {
   return slots.filter((hour) => notes.get(hour)?.trim()).length;
 }
 
+/** Count recorded slots, not measured working duration; duplicates count once. */
+export function worklogProgress(days: string[], entries: { entry_date: string; hour_slot: number; note: string }[]) {
+  const filled = new Map(days.map((day) => [day, new Set<number>()]));
+  for (const entry of entries) {
+    if (entry.note.trim() && Number.isInteger(entry.hour_slot) && entry.hour_slot >= 0 && entry.hour_slot < 24) {
+      filled.get(entry.entry_date)?.add(entry.hour_slot);
+    }
+  }
+  const counts = days.map((day) => ({ day, count: filled.get(day)!.size }));
+  return { counts, total: counts.reduce((sum, item) => sum + item.count, 0), activeDays: counts.filter((item) => item.count > 0).length };
+}
+
 export function dayAsText(title: string, layout: DayLayout, notes: Map<number, string>) {
   const lines = [...layout.scheduled, ...layout.extra].flatMap((hour) => {
     const note = notes.get(hour)?.trim();

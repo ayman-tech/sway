@@ -11,9 +11,10 @@ import { WorklogSlot, type SlotStatus } from "@/components/worklog-slot";
 import { useTaskData } from "@/components/task-data-provider";
 import { beginSnapshotMutation, finishSnapshotMutation, loadWorklogSnapshot, quarantineSnapshots, readSnapshotTicket, saveWorklogSnapshot, type WorklogSnapshot } from "@/lib/task-snapshots";
 import { shouldRetryTaskRead, taskRetryDelay } from "@/lib/task-recovery";
+import { WorklogProgress } from "@/components/worklog-progress";
 import {
   currentShiftDay, dayAsText, dayIso, dayLayout, loggedCount, parseDay, scheduleSlots,
-  windowDays,
+  windowDays, worklogProgress,
 } from "@/lib/worklog";
 
 type SaveVars = { day: string; hour: number; note: string; today: string };
@@ -64,6 +65,9 @@ export default function WorklogPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
+  const [celebration, setCelebration] = useState(false);
+  const celebrated = useRef(new Set<string>());
+  useEffect(() => { if (!celebration) return; const timer = setTimeout(() => setCelebration(false), 4500); return () => clearTimeout(timer); }, [celebration]);
 
   // Shares the cache entry the dashboard shell fills, so settings load once.
   const workQuery = useQuery({
@@ -76,7 +80,7 @@ export default function WorklogPage() {
         api<WorkLogEntry[]>(`/worklog?today=${today}`, { signal }, { expectedUserId: userId }),
       ]);
       signal.throwIfAborted();
-      const value: WorklogSnapshot = { version: 1, userId, timezone, today, fetchedAt: Date.now(), start: settings.work_start_hour, end: settings.work_end_hour, entries };
+      const value: WorklogSnapshot = { version: 1, userId, timezone, today, fetchedAt: Date.now(), start: settings.work_start_hour, end: settings.work_end_hour, goal: settings.work_weekly_goal_hours ?? null, entries };
       if (ticket) await saveWorklogSnapshot(ticket, value).catch(() => {});
       return value;
     },
@@ -105,7 +109,17 @@ export default function WorklogPage() {
     },
     // A fetch already in flight could return the note from before this save.
     onMutate: () => { setSnapshot(null); return qc.cancelQueries({ queryKey: ["worklog"] }); },
-    onSuccess: (entry) => qc.setQueryData<WorklogSnapshot>(["worklog", userId, timezone, days[0], today], (old) => old ? { ...old, entries: withEntry(old.entries, entry) } : old),
+    onSuccess: (entry) => {
+      const key = ["worklog", userId, timezone, days[0], today];
+      const old = qc.getQueryData<WorklogSnapshot>(key);
+      if (!old) return;
+      const entries = withEntry(old.entries, entry);
+      const badge = `${userId}:${today}:${old.goal}`;
+      if (old.goal && worklogProgress(days, old.entries).total < old.goal && worklogProgress(days, entries).total >= old.goal && !celebrated.current.has(badge)) {
+        celebrated.current.add(badge); setCelebration(true);
+      }
+      qc.setQueryData(key, { ...old, entries });
+    },
     onSettled: () => { void qc.invalidateQueries({ queryKey: ["worklog"] }); },
   });
   const saveEntry = (entryDay: string, hour: number, note: string) =>
@@ -136,21 +150,27 @@ export default function WorklogPage() {
   const layout = dayLayout(slots, notes);
   const logged = loggedCount(slots, notes);
   const dayLabel = format(parseDay(day), "EEEE, MMM d");
+  const progress = useMemo(() => worklogProgress(days, view?.entries ?? []), [days, view?.entries]);
 
-  // Bring the current hour into view when landing on the in-progress day.
-  const nowHour = useRef(now.getHours());
-  nowHour.current = now.getHours();
-  const scrolledDay = useRef<string | null>(null);
+  const [jumpHour, setJumpHour] = useState(false);
   useEffect(() => {
-    if (day !== shiftDay) {
-      scrolledDay.current = null;
-      return;
+    if (!jumpHour) return;
+    document.getElementById(`worklog-${shiftDay}-${now.getHours()}`)?.closest(".worklog-slot")?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    setJumpHour(false);
+  }, [jumpHour, shiftDay, now]);
+  const saveGoal = async (goal: number | null) => {
+    if (!canEdit || !navigator.onLine) throw new Error("Refresh your work log before changing the goal.");
+    const ticket = await beginSnapshotMutation(userId).catch(() => { quarantineSnapshots(); return null; });
+    try {
+      const settings = await api<UserSettings>("/settings", { method: "PATCH", body: JSON.stringify({ work_weekly_goal_hours: goal }) }, { expectedUserId: userId });
+      qc.setQueryData(["settings"], settings);
+      qc.setQueryData<WorklogSnapshot>(["worklog", userId, timezone, days[0], today], (old) => old ? { ...old, goal: settings.work_weekly_goal_hours } : old);
+      setSnapshot(null); setCelebration(false);
+    } finally {
+      if (ticket) await finishSnapshotMutation(ticket).catch(quarantineSnapshots);
+      void qc.invalidateQueries({ queryKey: ["worklog"] });
     }
-    if (!ready || scrolledDay.current === day) return;
-    scrolledDay.current = day;
-    document.getElementById(`worklog-${day}-${nowHour.current}`)?.closest(".worklog-slot")
-      ?.scrollIntoView({ block: "center" });
-  }, [ready, day, shiftDay]);
+  };
 
   const copyDay = async () => {
     setCopyError("");
@@ -182,12 +202,15 @@ export default function WorklogPage() {
   );
 
   return (
-    <section className="space-y-4 lg:space-y-5">
+    <section className="worklog-page space-y-4 lg:space-y-5">
       <div className="hidden lg:block">
         <h1 className="text-3xl font-black">Work log</h1>
-        <p className="mt-1 text-[var(--muted)]">Note what you worked on each hour. The last 7 days are kept.</p>
+        <p className="mt-1 text-[var(--muted)]">A little progress, made visible.</p>
       </div>
 
+      <div className="worklog-layout">
+      {ready ? <WorklogProgress days={days} day={day} logged={logged} scheduled={slots.length} extra={layout.extra.length} progress={progress} goal={view?.goal ?? null} canEdit={canEdit} onSelect={setPicked} onGoal={saveGoal} celebration={celebration} /> : null}
+      <div className="worklog-editor space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="min-w-0 truncate text-lg font-bold text-[var(--foreground)]">{dayLabel}</p>
         <div className="flex gap-2">
@@ -208,26 +231,6 @@ export default function WorklogPage() {
             <ChevronRight size={18} />
           </button>
         </div>
-      </div>
-
-      <div className="worklog-days">
-        {days.map((value) => {
-          const date = parseDay(value);
-          return (
-            <button
-              aria-label={`${format(date, "EEEE, MMMM d")}${value === shiftDay ? ", today" : ""}`}
-              aria-pressed={value === day}
-              className="worklog-day"
-              key={value}
-              onClick={() => setPicked(value)}
-              type="button"
-            >
-              <span className="text-xs font-bold">{format(date, "EEE")}</span>
-              <span className="text-base font-black">{format(date, "d")}</span>
-              <span aria-hidden="true" className={value === shiftDay ? "worklog-day-dot" : "worklog-day-dot invisible"} />
-            </button>
-          );
-        })}
       </div>
 
       {ready && (!canEdit || retrying) ? <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
@@ -267,9 +270,12 @@ export default function WorklogPage() {
             <p className="text-sm text-[var(--muted)]" role="status">
               {logged} of {slots.length} {slots.length === 1 ? "hour" : "hours"} logged
             </p>
+            <div className="flex flex-wrap justify-end gap-2">
+            <button className="btn btn-secondary" disabled={!ready} onClick={() => { setPicked(shiftDay); setJumpHour(true); }} type="button">Current hour</button>
             <button className="btn btn-secondary" disabled={!logged && !layout.extra.length} onClick={() => void copyDay()} type="button">
               {copied ? <Check size={17} /> : <Copy size={17} />} {copied ? "Copied" : "Copy day"}
             </button>
+            </div>
           </div>
           {copyError ? <p className="text-sm text-[var(--danger)]" role="alert">{copyError}</p> : null}
           <div className="space-y-2.5 lg:space-y-3">{layout.scheduled.map(renderSlot)}</div>
@@ -284,6 +290,8 @@ export default function WorklogPage() {
           ) : null}
         </>
       ) : null}
+      </div>
+      </div>
     </section>
   );
 }

@@ -1,8 +1,9 @@
 const CACHE_PREFIX = "sway-pwa-";
-const CACHE_NAME = `${CACHE_PREFIX}v3`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [
   OFFLINE_URL,
+  "/icons/sway-mark.svg",
   "/icons/sway-icon.svg",
   "/icons/sway-180.png",
   "/icons/sway-192.png",

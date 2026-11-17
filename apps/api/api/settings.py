@@ -28,6 +28,7 @@ def get_user_settings(user: CurrentUser) -> SettingsOut:
         browser_notifications_enabled=bool(row.get("browser_notifications_enabled")),
         work_start_hour=row.get("work_start_hour") if row.get("work_start_hour") is not None else DEFAULT_SETTINGS.work_start_hour,
         work_end_hour=row.get("work_end_hour") or DEFAULT_SETTINGS.work_end_hour,
+        work_weekly_goal_hours=row.get("work_weekly_goal_hours"),
     )
 
 
@@ -45,6 +46,7 @@ def update_user_settings(user: CurrentUser, payload: SettingsUpdate) -> Settings
         "browser_notifications_enabled": merged["browser_notifications_enabled"],
         "work_start_hour": merged["work_start_hour"],
         "work_end_hour": merged["work_end_hour"],
+        "work_weekly_goal_hours": merged["work_weekly_goal_hours"],
     }
     try:
         user.client.table("user_settings").upsert(row).execute()

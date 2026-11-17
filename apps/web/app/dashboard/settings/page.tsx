@@ -202,7 +202,7 @@ export default function SettingsPage() {
       <PwaInstallCard />
       <TaskCacheSettings />
       <PushSettingsCard />
-      <div className="panel p-4 lg:p-5">
+      <div id="google-calendar" className="panel scroll-mt-20 p-4 lg:p-5">
         <h2 className="flex items-center gap-2 text-xl font-black">
           <CalendarDays size={20} /> Google Calendar
         </h2>

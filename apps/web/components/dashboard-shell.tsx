@@ -139,14 +139,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="dashboard-shell min-h-screen lg:grid lg:grid-cols-[225px_1fr]">
-      <aside className="dashboard-sidebar hidden border-r border-[#dfd7ca] bg-[#fffdf8] px-4 py-5 lg:flex lg:min-h-screen lg:flex-col">
-        <Link className="mb-8 flex items-center gap-2 text-2xl font-black" href="/">
+      <aside className="dashboard-sidebar hidden border-r border-[#dfd7ca] bg-[#fffdf8] px-4 py-5 lg:sticky lg:top-0 lg:flex lg:h-dvh lg:min-h-0 lg:self-start lg:flex-col">
+        <Link className="mb-8 flex shrink-0 items-center gap-2 text-2xl font-black" href="/">
           <SwayLogo size={32} /> Sway
         </Link>
-        <button className="btn btn-primary mb-5 w-full" disabled={!taskData.canWrite} title={!taskData.canWrite ? "Refresh tasks to enable changes" : undefined} onClick={() => { if (taskData.canWrite) setCreateOpen(true); }} type="button">
+        <button className="btn btn-primary mb-5 w-full shrink-0" disabled={!taskData.canWrite} title={!taskData.canWrite ? "Refresh tasks to enable changes" : undefined} onClick={() => { if (taskData.canWrite) setCreateOpen(true); }} type="button">
           <Plus size={18} /> Add task
         </button>
-        <nav className="space-y-2">
+        <nav aria-label="Dashboard navigation" className="min-h-0 flex-1 space-y-2 overflow-y-auto">
           {items.map((item) => {
             const active = pathname === item.href || (pathname === "/dashboard" && item.href.endsWith("tasks"));
             return (
@@ -165,7 +165,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="mt-auto pt-8">
+        <div className="shrink-0 pt-4">
           {displayName ? <p className="truncate px-3 text-sm font-bold text-[var(--muted)]">{displayName}</p> : null}
           <button
             className={`btn btn-secondary w-full ${displayName ? "mt-3" : ""}`}

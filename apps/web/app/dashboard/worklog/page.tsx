@@ -266,11 +266,11 @@ export default function WorklogPage() {
 
       {ready ? (
         <>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm text-[var(--muted)]" role="status">
+          <div className="grid gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3">
+            <p className="shrink-0 text-sm text-[var(--muted)]" role="status">
               {logged} of {slots.length} {slots.length === 1 ? "hour" : "hours"} logged
             </p>
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
             <button className="btn btn-secondary" disabled={!ready} onClick={() => { setPicked(shiftDay); setJumpHour(true); }} type="button">Current hour</button>
             <button className="btn btn-secondary" disabled={!logged && !layout.extra.length} onClick={() => void copyDay()} type="button">
               {copied ? <Check size={17} /> : <Copy size={17} />} {copied ? "Copied" : "Copy day"}

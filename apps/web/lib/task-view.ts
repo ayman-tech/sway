@@ -16,6 +16,16 @@ export function localDay(date: Date, timezone: string): string {
   return dateKey(date, dayFormatter(timezone));
 }
 
+export function addTaskDays(day: string, count: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + count);
+  return date.toISOString().slice(0, 10);
+}
+
+export function taskOccurrenceKey(task: Task): string {
+  return JSON.stringify([task.id, task.due_at ?? task.due_date, task.is_preview]);
+}
+
 export function formatLastSync(timestamp: number, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
@@ -32,13 +42,14 @@ export function regroupSavedTasks(groups: TaskGroup[], today: string, timezone: 
   const weekEnd = new Date(`${today}T00:00:00Z`);
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
   const lastDay = weekEnd.toISOString().slice(0, 10);
-  const labels = ["Overdue", "Today", "Next 7 Days", "Untimed", "Later"];
+  const labels = ["Overdue", "Today", "Tomorrow", "Untimed", "Next 7 Days"];
   const buckets = new Map(labels.map((label) => [label, [] as { task: Task; day: string | null }[]]));
   for (const group of groups) {
     for (const task of group.tasks) {
       const instant = task.due_at ? new Date(task.due_at) : null;
       const day = task.due_date ?? (instant && Number.isFinite(instant.getTime()) ? dateKey(instant, formatter) : null);
-      const label = !day ? "Untimed" : day < today ? "Overdue" : day === today ? "Today" : day <= lastDay ? "Next 7 Days" : "Later";
+      if (day && day > lastDay) continue;
+      const label = !day ? "Untimed" : day < today ? "Overdue" : day === today ? "Today" : day === addTaskDays(today, 1) ? "Tomorrow" : "Next 7 Days";
       buckets.get(label)!.push({ task, day });
     }
   }

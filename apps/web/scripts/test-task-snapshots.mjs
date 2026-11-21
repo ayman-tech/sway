@@ -179,6 +179,7 @@ test("saved tasks regroup against today without changing the saved response", ()
   const original = [{ label: "Today", overdue: false, tasks: [
     { ...task, id: "yesterday", due_date: "2026-10-06" },
     { ...task, id: "today", due_date: "2026-10-07" },
+    { ...task, id: "tomorrow", due_date: "2026-10-08" },
     { ...task, id: "week-end", due_date: "2026-10-14" },
     { ...task, id: "later", due_date: "2026-10-15" },
     { ...task, id: "untimed" },
@@ -186,7 +187,7 @@ test("saved tasks regroup against today without changing the saved response", ()
   const before = structuredClone(original);
   const result = regroupSavedTasks(original, "2026-10-07", "America/New_York");
   assert.deepEqual(result.map((group) => [group.label, group.tasks[0].id]), [
-    ["Overdue", "yesterday"], ["Today", "today"], ["Next 7 Days", "week-end"], ["Untimed", "untimed"], ["Later", "later"],
+    ["Overdue", "yesterday"], ["Today", "today"], ["Tomorrow", "tomorrow"], ["Untimed", "untimed"], ["Next 7 Days", "week-end"],
   ]);
   assert.equal(result[0].overdue, true);
   assert.deepEqual(original, before);
@@ -204,9 +205,9 @@ test("timed tasks use local dates; date-only tasks never shift across timezones"
 test("calendar-day week boundary survives DST and year rollover", () => {
   const group = (dates) => [{ label: "Later", overdue: false, tasks: dates.map((due_date) => ({ ...task, due_date })) }];
   const dst = regroupSavedTasks(group(["2026-11-07", "2026-11-08"]), "2026-10-31", "America/New_York");
-  assert.deepEqual(dst.map((item) => item.label), ["Next 7 Days", "Later"]);
+  assert.deepEqual(dst.map((item) => item.label), ["Next 7 Days"]);
   const year = regroupSavedTasks(group(["2027-01-06", "2027-01-07"]), "2026-12-30", "UTC");
-  assert.deepEqual(year.map((item) => item.label), ["Next 7 Days", "Later"]);
+  assert.deepEqual(year.map((item) => item.label), ["Next 7 Days"]);
 });
 test("sorts timed tasks chronologically and untimed tasks newest-first", () => {
   const input = [{ label: "old", overdue: false, tasks: [

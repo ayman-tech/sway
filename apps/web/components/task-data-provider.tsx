@@ -146,7 +146,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
       signal.throwIfAborted();
       let groups: TaskGroup[];
       try {
-        groups = await api<TaskGroup[]>(`/tasks/groups?timezone_name=${encodeURIComponent(timezone)}`, { signal }, { expectedUserId: userId });
+        groups = await api<TaskGroup[]>(`/tasks/groups?timezone_name=${encodeURIComponent(timezone)}&horizon_days=7`, { signal }, { expectedUserId: userId });
       } catch (error) {
         if (!signal.aborted && epoch === generation.current) lock();
         throw error;
@@ -245,7 +245,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
       else if (value === "preference") {
         setSnapshot(null);
         if (identity.current) void claimSnapshotOwner(identity.current).then(setCacheEnabledState).catch(storageWarning);
-      } else if (value === "mutation-start") { setSnapshot(null); lock(); generation.current++; void qc.cancelQueries({ queryKey: ["task-groups"] }); }
+      } else if (value === "mutation-start") { setSnapshot(null); lock(); generation.current++; void qc.cancelQueries({ queryKey: ["task-groups"] }); void qc.cancelQueries({ queryKey: ["task-later"] }); }
       else revalidate(true);
     };
     const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(channelName) : null;
@@ -280,6 +280,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
       busy.current = true; lock(); generation.current++; setSnapshot(null);
       notify("mutation-start");
       await qc.cancelQueries({ queryKey: ["task-groups"] });
+      await qc.cancelQueries({ queryKey: ["task-later"] });
       let ticket: SnapshotTicket | null = null;
       try { ticket = await beginSnapshotMutation(userId); } catch { quarantineSnapshots(); storageWarning(); }
       try {
@@ -298,7 +299,7 @@ export function TaskDataProvider({ children }: { children: React.ReactNode }) {
           setSettling(true);
           notify("mutation-end");
           revalidate(true);
-          for (const key of ["calendar", "completed", "availability-calendar"]) void qc.invalidateQueries({ queryKey: [key] });
+          for (const key of ["calendar", "completed", "availability-calendar", "task-later"]) void qc.invalidateQueries({ queryKey: [key] });
         }
       }
     };

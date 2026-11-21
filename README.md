@@ -1,5 +1,7 @@
 # Sway
 
+Tasks open with Overdue, Today, Tomorrow, Untimed, and Next 7 Days (days 2–7). **Load later tasks** retrieves days 8–30; **Load next 30 days** appends subsequent ranges. Expanded ranges remain in browser memory across dashboard navigation and reset after a full reload or account/date/timezone change. Saved snapshots regroup into the same order and remain read-only until refreshed. Deploy the API alongside the web update; this feature needs no database migration.
+
 ### Work Log progress rollout
 
 For existing deployments, run `supabase/worklog_weekly_goal.sql` in the Supabase SQL editor **before** deploying the API/web update. This adds an optional account-wide goal (1–168 hours, disabled by default). New installations receive it from `supabase/schema.sql`. No environment variables or extra services are needed.

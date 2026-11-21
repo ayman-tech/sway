@@ -28,6 +28,7 @@ tests
 !apps/api/tests/
 apps/api/tests/*
 !apps/api/tests/test_worklog.py
+!apps/api/tests/test_task_groups.py
 .DS_Store
 CLAUDE.md
 AGENTS.md

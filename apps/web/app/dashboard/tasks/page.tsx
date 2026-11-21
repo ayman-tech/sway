@@ -7,6 +7,8 @@ import { ApiError } from "@/lib/api";
 import type { Task } from "@/lib/types";
 import { useTaskData } from "@/components/task-data-provider";
 import { TaskCard } from "@/components/task-card";
+import { LaterTasks } from "@/components/later-tasks";
+import { CompleteOverdueButton } from "@/components/complete-overdue-button";
 import { TaskEditorModal, type TaskEditorPayload } from "@/components/task-editor-modal";
 import { formatLastSync, localDay, regroupSavedTasks } from "@/lib/task-view";
 
@@ -18,12 +20,16 @@ function currentDateContext() {
 export default function TasksPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Task | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const taskData = useTaskData();
   const { groups: data, fetching: isFetching, waitingForNetwork, error, failureCount, retry: refetch, canWrite, saved, fetchedAt } = taskData;
   const { canQueue, syncing } = taskData;
   // Tasks completed by tap: collapsed right away, gone for good once the refresh lands.
   const [leaving, setLeaving] = useState<Set<string>>(() => new Set());
   const [dateContext, setDateContext] = useState(currentDateContext);
+  useEffect(() => {
+    void qc.invalidateQueries({ queryKey: ["task-groups"] }, { cancelRefetch: false });
+  }, [dateContext.today, qc]);
   useEffect(() => {
     const refreshDate = () => {
       const next = currentDateContext();
@@ -38,7 +44,7 @@ export default function TasksPage() {
       document.removeEventListener("visibilitychange", refreshDate);
     };
   }, []);
-  const displayGroups = useMemo(() => data && (saved || !canWrite)
+  const displayGroups = useMemo(() => data
     ? regroupSavedTasks(data, dateContext.today, dateContext.timezone) : data,
   [data, saved, canWrite, dateContext]);
   const isPending = data === undefined && (!error || isFetching || waitingForNetwork);
@@ -57,7 +63,7 @@ export default function TasksPage() {
     mutationFn: (task: Task) => taskData.mutate<Task>(`/tasks/${task.id}/complete`, { method: "POST" }),
   });
   const completeTask = (task: Task) => {
-    if (!canQueue || leaving.has(task.id)) return Promise.resolve();
+    if (!canQueue || bulkBusy || leaving.has(task.id)) return Promise.resolve();
     setLeaving((previous) => new Set(previous).add(task.id));
     return complete.mutateAsync(task).catch(() => {
       setLeaving((previous) => {
@@ -125,16 +131,19 @@ export default function TasksPage() {
           </button>
         </div>
       ) : null}
-      {hasData && !error && !(data ?? []).some((group) => group.tasks.length) ? (
+      {hasData && !error && !(displayGroups ?? []).some((group) => group.tasks.length) ? (
         <div className="panel px-5 py-8 text-center">
-          <h2 className="text-lg font-bold">Your task list is clear</h2>
+          <h2 className="text-lg font-bold">No tasks in your current view</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{canWrite ? "Use the + button to add your next task." : "This saved list is empty. Refresh before adding tasks."}</p>
         </div>
       ) : null}
       <div className="space-y-5 lg:space-y-6">
         {(displayGroups ?? []).map((group) => (
           <section key={group.label}>
-            <h2 className={`mb-2.5 text-lg font-bold lg:mb-3 lg:text-xl lg:font-black ${group.overdue ? "text-[#b42318]" : ""}`}>{group.label}</h2>
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 lg:mb-3">
+              <h2 className={`text-lg font-bold lg:text-xl lg:font-black ${group.overdue ? "text-[var(--danger)]" : ""}`}>{group.label}</h2>
+              {group.overdue ? <CompleteOverdueButton tasks={group.tasks} onBusyChange={setBulkBusy} /> : null}
+            </div>
             <div className="-mb-2.5 lg:-mb-3">
               {group.tasks.map((task) => (
                 <TaskCard
@@ -143,7 +152,7 @@ export default function TasksPage() {
                   onDelete={(t) => remove.mutateAsync(t).catch(() => undefined)}
                   onOpen={setEditing}
                   task={task}
-                  completeDisabled={!canQueue}
+                  completeDisabled={!canQueue || bulkBusy}
                   disabled={!canWrite}
                   leaving={leaving.has(task.id)}
                 />
@@ -152,6 +161,7 @@ export default function TasksPage() {
           </section>
         ))}
       </div>
+      <LaterTasks today={dateContext.today} timezone={dateContext.timezone} primaryTasks={(displayGroups ?? []).flatMap((group) => group.tasks)} onOpen={setEditing} onComplete={(task) => complete.mutateAsync(task).catch(() => undefined)} onDelete={(task) => remove.mutateAsync(task).catch(() => undefined)} />
       <TaskEditorModal
         mode="edit"
         onClose={() => setEditing(null)}

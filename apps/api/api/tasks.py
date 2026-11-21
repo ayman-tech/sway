@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
 
@@ -202,10 +203,27 @@ def skip_occurrence(user: CurrentUser, task_id: str) -> None:
         store.upsert(task.touched(deleted_at=utc_now()))
 
 
-def groups_for(user: CurrentUser, timezone_name: str = "UTC"):
+def groups_for(user: CurrentUser, timezone_name: str = "UTC", horizon_days: int = 30):
     tasks = TaskStore(user).list_active()
     with timed_stage("tasks.group"):
-        return active_groups(tasks, timezone_name)
+        return active_groups(tasks, timezone_name, horizon_days)
+
+
+def later_for(user: CurrentUser, start_date: date, end_date: date, timezone_name: str) -> list[Task]:
+    if end_date < start_date or end_date == date.max or (end_date - start_date).days >= 30:
+        raise HTTPException(400, "Choose an ordered range of at most 30 days.")
+    try:
+        zone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(400, "Invalid timezone.") from None
+    start = datetime.combine(start_date, datetime.min.time(), zone).astimezone(timezone.utc)
+    stop_date = end_date + timedelta(days=1)
+    stop = datetime.combine(stop_date, datetime.min.time(), zone).astimezone(timezone.utc) - timedelta(microseconds=1)
+    tasks = tasks_in_range(TaskStore(user).list_active(), start, stop, start_date, stop_date)
+    def due(task: Task):
+        return task.due_date or (task.due_at.astimezone(zone).date() if task.due_at else None)
+    tasks = [task for task in tasks if (day := due(task)) is not None and start_date <= day <= end_date]
+    return sorted(tasks, key=lambda task: (due(task), task.due_at is None, task.due_at or datetime.max.replace(tzinfo=timezone.utc), task.id))
 
 
 def completed_for(user: CurrentUser):

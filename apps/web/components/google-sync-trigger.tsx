@@ -19,6 +19,7 @@ const FOREGROUND_QUERY_KEYS = new Set([
   "google-status",
   "settings",
   "task-groups",
+  "task-later",
   "worklog",
 ]);
 
@@ -107,6 +108,7 @@ export function GoogleSyncTrigger({ shellReady }: { shellReady: boolean }) {
         .then((result) => {
           if (mounted.current) setSyncFailure(null);
           if (result.imported > 0) {
+            void queryClient.invalidateQueries({ queryKey: ["task-later"] });
             void queryClient.invalidateQueries({ queryKey: ["task-groups"] });
             void queryClient.invalidateQueries({ queryKey: ["calendar"] });
             void queryClient.invalidateQueries({ queryKey: ["availability-calendar"] });

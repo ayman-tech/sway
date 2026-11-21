@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from time import perf_counter
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from postgrest.exceptions import APIError as PostgrestAPIError
@@ -64,6 +64,7 @@ from api.tasks import (
     create_task,
     delete_task,
     groups_for,
+    later_for,
     skip_occurrence,
     task_out,
     uncomplete_task,
@@ -239,11 +240,16 @@ def post_skip(task_id: str, user: CurrentUser = Depends(get_current_user)) -> No
 
 
 @app.get("/tasks/groups", response_model=list[TaskGroupOut])
-def get_groups(timezone_name: str = "UTC", user: CurrentUser = Depends(get_current_user)) -> list[TaskGroupOut]:
+def get_groups(timezone_name: str = "UTC", user: CurrentUser = Depends(get_current_user), horizon_days: int = Query(default=30, ge=7, le=30)) -> list[TaskGroupOut]:
     return [
         TaskGroupOut(label=group.label, overdue=group.overdue, tasks=[task_out(t) for t in group.tasks], has_more=group.has_more)
-        for group in groups_for(user, timezone_name)
+        for group in groups_for(user, timezone_name, horizon_days)
     ]
+
+
+@app.get("/tasks/later", response_model=list[TaskOut])
+def get_later(start_date: date, end_date: date, timezone_name: str = "UTC", user: CurrentUser = Depends(get_current_user)) -> list[TaskOut]:
+    return [task_out(task) for task in later_for(user, start_date, end_date, timezone_name)]
 
 
 @app.get("/tasks/completed", response_model=list[TaskGroupOut])

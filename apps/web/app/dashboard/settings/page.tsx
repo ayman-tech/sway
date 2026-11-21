@@ -117,6 +117,7 @@ export default function SettingsPage() {
       setGoogleMessage(result.skipped ? "A Google sync is already in progress. Check again shortly." : `Google sync complete. ${result.imported} event${result.imported === 1 ? "" : "s"} changed.`);
       qc.invalidateQueries({ queryKey: ["google-status"] });
       qc.invalidateQueries({ queryKey: ["task-groups"] });
+      qc.invalidateQueries({ queryKey: ["task-later"] });
       qc.invalidateQueries({ queryKey: ["calendar"] });
     },
     onError: (error) => {

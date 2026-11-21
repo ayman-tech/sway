@@ -5,7 +5,7 @@ import { LandingThemeToggle } from "@/components/landing-theme-toggle";
 import { SwayLogo } from "@/components/sway-logo";
 
 const features = [
-  { icon: ListTodo, title: "Know what needs you today", text: "Overdue, Today, Next 7 Days, and Later keep your next step in view. Give ideas without a deadline a home, too." },
+  { icon: ListTodo, title: "Know what needs you today", text: "Overdue, Today, Tomorrow, Untimed, and Next 7 Days keep your next step in view. Load later tasks whenever you want to look ahead." },
   { icon: CalendarDays, title: "See the whole month", text: "Switch from your task list to your calendar. Select a day to see its agenda, without planning everything twice." },
   { icon: RefreshCw, title: "Bring your Google Calendar along", text: "See imported events beside your tasks. Google stays in charge of event details; Sway helps you plan around them." },
 ];
